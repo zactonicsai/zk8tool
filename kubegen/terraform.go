@@ -542,6 +542,9 @@ func tfVars(c *Config) []tfVar {
 func validateTerraform(c *Config) (errs, warns []string) {
 	switch c.Provider {
 	case "kind":
+		if c.Kind.Runtime == "podman" {
+			warns = append(warns, "kind.runtime podman: run `export KIND_EXPERIMENTAL_PROVIDER=podman` before terraform apply so the kind provider uses Podman")
+		}
 		if c.Kind.WaitTimeout != "" {
 			warns = append(warns, "kind.waitTimeout is not used by the Terraform output (the provider waits with its own timeout)")
 		}

@@ -47,6 +47,7 @@ type Taint struct {
 }
 
 type KindConfig struct {
+	Runtime           string        `yaml:"runtime"`
 	NodeImage         string        `yaml:"nodeImage"`
 	ControlPlaneNodes int           `yaml:"controlPlaneNodes"`
 	WorkerNodes       int           `yaml:"workerNodes"`

@@ -34,4 +34,10 @@ for provider in kind aks eks vks dks; do
   run "$KUBEGEN" -f "examples/$provider.yaml" -format terraform -o "$OUT/terraform/$provider" -skip-tool-check
 done
 
-echo "examples written to $OUT"
+# kind on Podman: its definition and output live in podman/.
+echo "==> kind on podman (dev-podman)"
+mkdir -p podman/output
+run "$KUBEGEN" -f podman/kind-podman.yaml -o podman/output/create-dev-podman.sh -skip-tool-check
+run "$KUBEGEN" -f podman/kind-podman.yaml -format terraform -o podman/output/terraform -skip-tool-check
+
+echo "examples written to $OUT and podman/output"

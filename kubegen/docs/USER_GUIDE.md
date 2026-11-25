@@ -9,7 +9,7 @@ kubegen never creates anything itself. It writes files; you review and run them.
 
 | `provider` | Platform                          | Shell script uses        | Terraform uses                       |
 |------------|-----------------------------------|--------------------------|--------------------------------------|
-| `kind`     | Kubernetes in Docker (local)      | docker, kind, kubectl    | terraform, docker                    |
+| `kind`     | Kubernetes in Docker or Podman    | docker or podman, kind, kubectl | terraform, docker or podman   |
 | `aks`      | Azure Kubernetes Service          | az, kubectl              | terraform, az                        |
 | `eks`      | Amazon EKS                        | aws, eksctl, kubectl     | terraform, aws                       |
 | `vks`      | VMware vSphere Kubernetes Service | kubectl, kubectl-vsphere | terraform, kubectl, kubectl-vsphere  |
@@ -166,7 +166,7 @@ Neither output logs in for you.
 
 | Provider | Before running                                                                        |
 |----------|---------------------------------------------------------------------------------------|
-| `kind`   | Start Docker.                                                                         |
+| `kind`   | Start Docker (or Podman, with `kind.runtime: podman`).                                |
 | `aks`    | `az login`. Terraform also needs the subscription: set `aks.subscription` to the subscription ID or export `ARM_SUBSCRIPTION_ID`. |
 | `eks`    | `aws configure` or `aws sso login` (set `eks.profile` for a named profile).           |
 | `vks`    | `kubectl vsphere login --server <supervisor> --vsphere-username <user>`. The shell script does this itself when `vks.login.method` is `kubectl-vsphere`; Terraform never does. |
@@ -202,6 +202,7 @@ start and exit with code 127 if a tool is missing.
 | Tool            | Download                                                                      |
 |-----------------|-------------------------------------------------------------------------------|
 | docker          | <https://docs.docker.com/get-docker/>                                         |
+| podman          | <https://podman.io/docs/installation>                                         |
 | kind            | <https://kind.sigs.k8s.io/docs/user/quick-start/#installation>                |
 | kubectl         | <https://kubernetes.io/docs/tasks/tools/>                                     |
 | az              | <https://learn.microsoft.com/cli/azure/install-azure-cli>                     |
@@ -240,6 +241,16 @@ anything:
     examples/output/console.txt                   what kubegen printed
 
 Regenerate them with `./build.sh examples`.
+
+## Using Podman
+
+- **kind on Podman:** set `kind.runtime: podman` in the definition. kubegen
+  then checks for `podman` instead of `docker` and the script tells kind to
+  use it. Example: `podman/kind-podman.yaml`.
+- **kubegen without Go:** `podman/kubegen.sh -f my-cluster.yaml` builds and
+  runs kubegen in a container.
+
+Details and rootless caveats: [podman/README.md](../podman/README.md).
 
 ## Differences between the two outputs
 

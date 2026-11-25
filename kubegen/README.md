@@ -5,7 +5,7 @@ cluster with the provider's own CLI.
 
 | provider | platform                          | CLIs used                 |
 |----------|-----------------------------------|---------------------------|
-| `kind`   | Kubernetes in Docker (local)      | docker, kind, kubectl     |
+| `kind`   | Kubernetes in Docker or Podman    | docker or podman, kind, kubectl |
 | `aks`    | Azure Kubernetes Service          | az, kubectl               |
 | `eks`    | Amazon EKS                        | aws, eksctl, kubectl      |
 | `vks`    | VMware vSphere Kubernetes Service | kubectl, kubectl-vsphere  |
@@ -45,6 +45,8 @@ Exit codes: 2 usage, 3 invalid cluster definition, 4 missing tools.
   for completion and validation.
 - `examples/` - one definition per provider; `examples/output/` holds the
   scripts and Terraform generated from them.
+- `podman/` - kind on Podman instead of Docker, and running kubegen in a
+  Podman container. See [podman/README.md](podman/README.md).
 - `templates/` - the Terraform for each provider (embedded in the binary).
 - `terraform.go` - Terraform variables and file generation.
 - `validate.go` - the same rules enforced by the program.

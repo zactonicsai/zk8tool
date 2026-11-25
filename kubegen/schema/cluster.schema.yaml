@@ -22,7 +22,7 @@ properties:
   provider:
     description: Target platform.
     enum:
-      - kind   # Kubernetes in Docker (local)
+      - kind   # Kubernetes in Docker or Podman (local)
       - aks    # Azure Kubernetes Service
       - eks    # Amazon Elastic Kubernetes Service
       - vks    # VMware vSphere Kubernetes Service
@@ -188,10 +188,17 @@ $defs:
         type: boolean
 
   kind:
-    description: Settings for provider "kind". Tools - docker, kind, kubectl.
+    description: Settings for provider "kind". Tools - docker or podman, kind, kubectl.
     type: object
     additionalProperties: false
     properties:
+      runtime:
+        description: |
+          Container engine that runs the kind nodes. podman makes the script
+          set KIND_EXPERIMENTAL_PROVIDER=podman and check for podman instead
+          of docker.
+        enum: [docker, podman]
+        default: docker
       nodeImage:
         description: Node image; overrides kubernetesVersion. E.g. kindest/node:v1.33.1
         type: string

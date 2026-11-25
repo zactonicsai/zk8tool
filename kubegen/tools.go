@@ -12,6 +12,7 @@ type Tool struct {
 var (
 	toolKubectl   = Tool{"kubectl", "talks to the cluster", "https://kubernetes.io/docs/tasks/tools/"}
 	toolDocker    = Tool{"docker", "runs the kind nodes", "https://docs.docker.com/get-docker/"}
+	toolPodman    = Tool{"podman", "runs the kind nodes", "https://podman.io/docs/installation"}
 	toolKind      = Tool{"kind", "creates the local cluster", "https://kind.sigs.k8s.io/docs/user/quick-start/#installation"}
 	toolAz        = Tool{"az", "Azure CLI, creates the AKS cluster", "https://learn.microsoft.com/cli/azure/install-azure-cli"}
 	toolAWS       = Tool{"aws", "AWS CLI, provides credentials for eksctl", "https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"}
@@ -28,7 +29,7 @@ func requiredTools(c *Config, format string) []Tool {
 	}
 	switch c.Provider {
 	case "kind":
-		return []Tool{toolDocker, toolKind, toolKubectl}
+		return []Tool{kindRuntimeTool(c), toolKind, toolKubectl}
 	case "aks":
 		return []Tool{toolAz, toolKubectl}
 	case "eks":
@@ -49,6 +50,14 @@ func requiredTools(c *Config, format string) []Tool {
 	return nil
 }
 
+// kindRuntimeTool is the container engine kind runs its nodes in.
+func kindRuntimeTool(c *Config) Tool {
+	if c.Kind != nil && c.Kind.Runtime == "podman" {
+		return toolPodman
+	}
+	return toolDocker
+}
+
 // missingTools returns the tools that are not on PATH.
 func missingTools(tools []Tool) []Tool {
 	var missing []Tool
@@ -66,7 +75,7 @@ func terraformTools(c *Config) []Tool {
 	tools := []Tool{toolTerraform}
 	switch c.Provider {
 	case "kind":
-		tools = append(tools, toolDocker)
+		tools = append(tools, kindRuntimeTool(c))
 	case "aks":
 		az := toolAz
 		az.Purpose = "Azure CLI, provides the login Terraform uses"

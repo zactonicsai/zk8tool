@@ -1,4 +1,8 @@
-# Local Kubernetes cluster running as Docker containers (kind).
+# Local Kubernetes cluster running as containers (kind).
+#
+# Container engine: Docker by default. To use Podman instead, set this in
+# the shell before running terraform:
+#   export KIND_EXPERIMENTAL_PROVIDER=podman
 #
 # Usage:
 #   terraform init

@@ -273,8 +273,15 @@ func genKind(s *script, c *Config) {
 		wait = "120s"
 	}
 
-	s.step("Checking Docker")
-	s.line(`docker info >/dev/null 2>&1 || die "Docker is installed but the daemon is not running"`)
+	if k.Runtime == "podman" {
+		s.step("Checking Podman")
+		s.line("# kind uses Docker unless told otherwise.")
+		s.line("export KIND_EXPERIMENTAL_PROVIDER=podman")
+		s.line(`podman info >/dev/null 2>&1 || die "Podman is installed but not usable; on macOS/Windows run: podman machine start"`)
+	} else {
+		s.step("Checking Docker")
+		s.line(`docker info >/dev/null 2>&1 || die "Docker is installed but the daemon is not running"`)
+	}
 	s.step("Creating kind cluster " + c.Name)
 	s.configFile(b.String())
 	var kubeconfig []string

@@ -1,0 +1,16 @@
+# Builds kubegen without needing Go on the host.
+#
+#   podman build -t kubegen -f podman/Containerfile .
+#
+# (run from the project root; podman/kubegen.sh does this for you)
+
+# --- build stage: compile a static binary ---
+FROM docker.io/library/golang:1.24 AS build
+WORKDIR /src
+COPY . .
+RUN go mod tidy && CGO_ENABLED=0 go build -trimpath -o /kubegen .
+
+# --- final stage: just the binary ---
+FROM scratch
+COPY --from=build /kubegen /kubegen
+ENTRYPOINT ["/kubegen"]

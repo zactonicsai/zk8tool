@@ -106,6 +106,11 @@ func validate(c *Config) (errs, warns []string) {
 		if k.NodeImage == "" && c.KubernetesVersion != "" && !patchVerRe.MatchString(c.KubernetesVersion) {
 			bad("kubernetesVersion: kind needs a full patch version such as \"1.33.1\" (or set kind.nodeImage)")
 		}
+		switch k.Runtime {
+		case "", "docker", "podman":
+		default:
+			bad("kind.runtime: %q must be docker or podman", k.Runtime)
+		}
 		if k.ControlPlaneNodes < 0 || k.WorkerNodes < 0 {
 			bad("kind: controlPlaneNodes and workerNodes must not be negative")
 		}
