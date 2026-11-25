@@ -1,0 +1,93 @@
+# Example variable overrides for the vks cluster "team-a".
+#
+# Copy this file to terraform.tfvars (loaded automatically), or to a file per
+# environment and pass it with -var-file:
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#   terraform apply
+#
+#   terraform apply -var-file=staging.tfvars
+#
+# Every setting below is commented out and shows its current default, which
+# was generated from examples/vks.yaml. Uncomment a setting and change it to override the
+# default; settings you leave commented keep their default.
+
+# Cluster name.
+# name = "team-a"
+
+# vSphere Namespace the cluster is created in.
+# namespace = "team-a-ns"
+
+# Kubeconfig holding your Supervisor login.
+# supervisor_kubeconfig_path = "~/.kube/config"
+
+# Context for the vSphere Namespace in that kubeconfig. null = current context.
+# supervisor_context = "team-a-ns"
+
+# Kubernetes release to run.
+# List the releases your Supervisor offers: kubectl get kr
+# kubernetes_version = "v1.33.1+vmware.1-fips"
+
+# ClusterClass the cluster is built from.
+# List them: kubectl get clusterclass -A
+# cluster_class = "builtin-generic-v3.4.0"
+
+# Namespace of the ClusterClass when it is not in `namespace`. null = same namespace.
+# cluster_class_namespace = "vmware-system-vks-public"
+
+# Cluster API version served by the Supervisor.
+# cluster_api_version = "cluster.x-k8s.io/v1beta1"
+
+# Cluster condition to wait for: Ready on v1beta1, Available on v1beta2.
+# ready_condition = "Ready"
+
+# Control-plane nodes: 1, 3 or 5.
+# control_plane_replicas = 3
+
+# VM class for the control plane and for pools without their own.
+# List them: kubectl get vmclass
+# vm_class = "best-effort-medium"
+
+# Storage class (storage policy) for node disks.
+# storage_class = "vsan-default-storage-policy"
+
+# Pod network CIDR. null = ClusterClass default.
+# pod_cidr = "192.168.156.0/20"
+
+# Service network CIDR. null = ClusterClass default.
+# service_cidr = "10.96.0.0/12"
+
+# Cluster DNS domain. null = cluster.local.
+# service_domain = null
+
+# Labels set on the Cluster object.
+# labels = {
+#   team = "a"
+# }
+
+# Worker node pools, keyed by pool name.
+# Fixed size: set node_count. Autoscaled: set autoscaling = { min = 1, max = 5 } instead.
+# To add a pool, add an entry:
+#   gpu = {
+#     node_count = 2
+#     vm_class   = "guaranteed-xlarge"
+#   }
+#
+# node_pools = {
+#   workers = {
+#     node_count = 3
+#   }
+#   large   = {
+#     autoscaling = {
+#       min = 1
+#       max = 5
+#     }
+#     vm_class    = "guaranteed-xlarge"
+#   }
+# }
+
+# How long to wait for the cluster to become ready, e.g. 30m.
+# wait_timeout = "45m"
+
+# File the workload cluster kubeconfig is written to.
+# kubeconfig_path = "./team-a.kubeconfig"

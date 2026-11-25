@@ -1,0 +1,107 @@
+$ ./bin/kubegen -f examples/kind.yaml -o examples/output/shell/create-dev-local.sh -skip-tool-check
+warning: 2 tool(s) required for provider "kind" (shell) are not installed or not in PATH:
+  - kind (creates the local cluster)
+      install it from: https://kind.sigs.k8s.io/docs/user/quick-start/#installation
+  - kubectl (talks to the cluster)
+      install it from: https://kubernetes.io/docs/tasks/tools/
+wrote examples/output/shell/create-dev-local.sh - run it with: bash examples/output/shell/create-dev-local.sh
+
+$ ./bin/kubegen -f examples/kind.yaml -format terraform -o examples/output/terraform/kind -skip-tool-check
+warning: kind.waitTimeout is not used by the Terraform output (the provider waits with its own timeout)
+warning: 1 tool(s) required for provider "kind" (terraform) are not installed or not in PATH:
+  - terraform (applies the generated Terraform configuration)
+      install it from: https://developer.hashicorp.com/terraform/install
+wrote examples/output/terraform/kind/main.tf
+wrote examples/output/terraform/kind/outputs.tf
+wrote examples/output/terraform/kind/terraform.tfvars.example
+wrote examples/output/terraform/kind/variables.tf
+wrote examples/output/terraform/kind/versions.tf
+next: cd examples/output/terraform/kind && terraform init && terraform plan
+
+$ ./bin/kubegen -f examples/aks.yaml -o examples/output/shell/create-prod-aks.sh -skip-tool-check
+warning: 2 tool(s) required for provider "aks" (shell) are not installed or not in PATH:
+  - az (Azure CLI, creates the AKS cluster)
+      install it from: https://learn.microsoft.com/cli/azure/install-azure-cli
+  - kubectl (talks to the cluster)
+      install it from: https://kubernetes.io/docs/tasks/tools/
+wrote examples/output/shell/create-prod-aks.sh - run it with: bash examples/output/shell/create-prod-aks.sh
+
+$ ./bin/kubegen -f examples/aks.yaml -format terraform -o examples/output/terraform/aks -skip-tool-check
+warning: 2 tool(s) required for provider "aks" (terraform) are not installed or not in PATH:
+  - terraform (applies the generated Terraform configuration)
+      install it from: https://developer.hashicorp.com/terraform/install
+  - az (Azure CLI, provides the login Terraform uses)
+      install it from: https://learn.microsoft.com/cli/azure/install-azure-cli
+wrote examples/output/terraform/aks/main.tf
+wrote examples/output/terraform/aks/outputs.tf
+wrote examples/output/terraform/aks/terraform.tfvars.example
+wrote examples/output/terraform/aks/variables.tf
+wrote examples/output/terraform/aks/versions.tf
+next: cd examples/output/terraform/aks && terraform init && terraform plan
+
+$ ./bin/kubegen -f examples/eks.yaml -o examples/output/shell/create-prod-eks.sh -skip-tool-check
+warning: 3 tool(s) required for provider "eks" (shell) are not installed or not in PATH:
+  - aws (AWS CLI, provides credentials for eksctl)
+      install it from: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+  - eksctl (creates the EKS cluster)
+      install it from: https://eksctl.io/installation/
+  - kubectl (talks to the cluster)
+      install it from: https://kubernetes.io/docs/tasks/tools/
+wrote examples/output/shell/create-prod-eks.sh - run it with: bash examples/output/shell/create-prod-eks.sh
+
+$ ./bin/kubegen -f examples/eks.yaml -format terraform -o examples/output/terraform/eks -skip-tool-check
+warning: 2 tool(s) required for provider "eks" (terraform) are not installed or not in PATH:
+  - terraform (applies the generated Terraform configuration)
+      install it from: https://developer.hashicorp.com/terraform/install
+  - aws (AWS CLI, provides credentials and the kubeconfig command)
+      install it from: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+wrote examples/output/terraform/eks/main.tf
+wrote examples/output/terraform/eks/outputs.tf
+wrote examples/output/terraform/eks/terraform.tfvars.example
+wrote examples/output/terraform/eks/variables.tf
+wrote examples/output/terraform/eks/versions.tf
+next: cd examples/output/terraform/eks && terraform init && terraform plan
+
+$ ./bin/kubegen -f examples/vks.yaml -o examples/output/shell/create-team-a.sh -skip-tool-check
+warning: 2 tool(s) required for provider "vks" (shell) are not installed or not in PATH:
+  - kubectl (talks to the cluster)
+      install it from: https://kubernetes.io/docs/tasks/tools/
+  - kubectl-vsphere (vSphere plugin for kubectl, logs in to the Supervisor)
+      install it from: https://supervisor.example.com/ (Kubernetes CLI Tools page served by your Supervisor)
+wrote examples/output/shell/create-team-a.sh - run it with: bash examples/output/shell/create-team-a.sh
+
+$ ./bin/kubegen -f examples/vks.yaml -format terraform -o examples/output/terraform/vks -skip-tool-check
+warning: vks: Terraform does not log in to the Supervisor; run `kubectl vsphere login` (or your usual login) before terraform apply
+warning: 3 tool(s) required for provider "vks" (terraform) are not installed or not in PATH:
+  - terraform (applies the generated Terraform configuration)
+      install it from: https://developer.hashicorp.com/terraform/install
+  - kubectl (talks to the cluster)
+      install it from: https://kubernetes.io/docs/tasks/tools/
+  - kubectl-vsphere (vSphere plugin for kubectl, logs in to the Supervisor)
+      install it from: https://supervisor.example.com/ (Kubernetes CLI Tools page served by your Supervisor)
+wrote examples/output/terraform/vks/main.tf
+wrote examples/output/terraform/vks/outputs.tf
+wrote examples/output/terraform/vks/terraform.tfvars.example
+wrote examples/output/terraform/vks/variables.tf
+wrote examples/output/terraform/vks/versions.tf
+next: cd examples/output/terraform/vks && terraform init && terraform plan
+
+$ ./bin/kubegen -f examples/dks.yaml -o examples/output/shell/create-staging-do.sh -skip-tool-check
+warning: 2 tool(s) required for provider "dks" (shell) are not installed or not in PATH:
+  - doctl (DigitalOcean CLI, creates the cluster)
+      install it from: https://docs.digitalocean.com/reference/doctl/how-to/install/
+  - kubectl (talks to the cluster)
+      install it from: https://kubernetes.io/docs/tasks/tools/
+wrote examples/output/shell/create-staging-do.sh - run it with: bash examples/output/shell/create-staging-do.sh
+
+$ ./bin/kubegen -f examples/dks.yaml -format terraform -o examples/output/terraform/dks -skip-tool-check
+warning: 1 tool(s) required for provider "dks" (terraform) are not installed or not in PATH:
+  - terraform (applies the generated Terraform configuration)
+      install it from: https://developer.hashicorp.com/terraform/install
+wrote examples/output/terraform/dks/main.tf
+wrote examples/output/terraform/dks/outputs.tf
+wrote examples/output/terraform/dks/terraform.tfvars.example
+wrote examples/output/terraform/dks/variables.tf
+wrote examples/output/terraform/dks/versions.tf
+next: cd examples/output/terraform/dks && terraform init && terraform plan
+

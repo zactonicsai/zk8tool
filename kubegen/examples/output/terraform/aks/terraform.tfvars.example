@@ -1,0 +1,123 @@
+# Example variable overrides for the aks cluster "prod-aks".
+#
+# Copy this file to terraform.tfvars (loaded automatically), or to a file per
+# environment and pass it with -var-file:
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#   terraform apply
+#
+#   terraform apply -var-file=staging.tfvars
+#
+# Every setting below is commented out and shows its current default, which
+# was generated from examples/aks.yaml. Uncomment a setting and change it to override the
+# default; settings you leave commented keep their default.
+
+# Cluster name.
+# name = "prod-aks"
+
+# Azure region.
+# location = "eastus"
+
+# Azure subscription ID. null = taken from ARM_SUBSCRIPTION_ID.
+# subscription_id = null
+
+# Resource group for the cluster.
+# resource_group_name = "rg-prod-aks"
+
+# Create the resource group (true) or use an existing one (false).
+# create_resource_group = true
+
+# Kubernetes version, e.g. "1.33". null = AKS default.
+# kubernetes_version = "1.33"
+
+# Control plane tier: Free, Standard (uptime SLA) or Premium (long-term support).
+# sku_tier = "Standard"
+
+# Tags applied to the resource group and cluster.
+# tags = {
+#   env   = "prod"
+#   owner = "platform team"
+# }
+
+# System node pool (runs cluster components). Needs at least one node.
+# Fixed size: set node_count. Autoscaled: set autoscaling = { min = 1, max = 5 } instead. Changing vm_size or zones recreates the pool.
+# system_node_pool = {
+#   name       = "system"
+#   vm_size    = "Standard_D4s_v5"
+#   node_count = 3
+#   zones      = ["1", "2", "3"]
+# }
+
+# User node pools, keyed by pool name (1-12 lowercase letters/digits).
+# Fixed size: set node_count. Autoscaled: set autoscaling = { min = 1, max = 5 } instead.
+# To add a pool, add an entry:
+#   gpu = {
+#     vm_size    = "Standard_NC6s_v3"
+#     node_count = 1
+#     taints     = ["sku=gpu:NoSchedule"]
+#   }
+#
+# user_node_pools = {
+#   apps  = {
+#     vm_size         = "Standard_D8s_v5"
+#     autoscaling     = {
+#       min = 2
+#       max = 10
+#     }
+#     os_disk_size_gb = 128
+#     labels          = {
+#       workload = "apps"
+#     }
+#   }
+#   batch = {
+#     vm_size     = "Standard_D8s_v5"
+#     autoscaling = {
+#       min = 0
+#       max = 20
+#     }
+#     taints      = ["workload=batch:NoSchedule"]
+#     spot        = true
+#   }
+# }
+
+# Network plugin: azure, kubenet or none (bring your own CNI).
+# network_plugin = "azure"
+
+# "overlay" gives pods addresses from pod_cidr instead of the VNet. null = VNet addresses.
+# network_plugin_mode = "overlay"
+
+# Network policy engine: azure, calico or cilium. null = none.
+# network_policy = "cilium"
+
+# Pod CIDR (overlay or kubenet). null = AKS default.
+# pod_cidr = "10.244.0.0/16"
+
+# Service CIDR. null = AKS default.
+# service_cidr = null
+
+# Cluster DNS service IP, inside service_cidr. null = AKS default.
+# dns_service_ip = null
+
+# Resource ID of an existing subnet for the nodes. null = AKS-managed VNet.
+# vnet_subnet_id = null
+
+# Expose the API server only inside the virtual network.
+# private_cluster_enabled = false
+
+# Enable the OIDC issuer URL.
+# oidc_issuer_enabled = false
+
+# Enable Microsoft Entra Workload ID (also enables the OIDC issuer).
+# workload_identity_enabled = true
+
+# Resource ID of a container registry the nodes may pull from. null = none.
+# acr_id = null
+
+# Linux admin user on the nodes (used with ssh_public_key_path).
+# admin_username = "azureuser"
+
+# SSH public key file for node access. null = no SSH access configured.
+# ssh_public_key_path = null
+
+# File to write the admin kubeconfig to. null = do not write a file.
+# kubeconfig_path = "~/.kube/prod-aks.yaml"

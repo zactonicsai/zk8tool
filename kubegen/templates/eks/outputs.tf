@@ -1,0 +1,28 @@
+output "cluster_name" {
+  description = "Name of the EKS cluster."
+  value       = aws_eks_cluster.this.name
+}
+
+output "endpoint" {
+  description = "Kubernetes API server URL."
+  value       = aws_eks_cluster.this.endpoint
+}
+
+output "vpc_id" {
+  description = "VPC created for the cluster."
+  value       = aws_vpc.this.id
+}
+
+output "oidc_provider_arn" {
+  description = "IAM OIDC provider ARN (null unless enable_oidc is set)."
+  value       = try(aws_iam_openid_connect_provider.this[0].arn, null)
+}
+
+output "update_kubeconfig_command" {
+  description = "Command that adds the cluster to your kubeconfig."
+  value = join(" ", compact([
+    "aws eks update-kubeconfig --region ${var.region} --name ${aws_eks_cluster.this.name}",
+    var.aws_profile == null ? "" : "--profile ${var.aws_profile}",
+    var.kubeconfig_path == null ? "" : "--kubeconfig ${var.kubeconfig_path}",
+  ]))
+}

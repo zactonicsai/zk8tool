@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=../schema/cluster.schema.yaml
+apiVersion: kubegen/v1
+provider: aks
+name: prod-aks
+kubernetesVersion: "1.33"
+region: eastus
+tags:
+  env: prod
+  owner: platform team
+
+kubeconfig:
+  path: ~/.kube/prod-aks.yaml
+
+nodePools:
+  - name: system               # first pool = AKS system pool
+    count: 3
+    size: Standard_D4s_v5
+    zones: ["1", "2", "3"]
+  - name: apps
+    size: Standard_D8s_v5
+    diskSizeGB: 128
+    autoscaling: {enabled: true, min: 2, max: 10}
+    labels: {workload: apps}
+  - name: batch
+    count: 0
+    size: Standard_D8s_v5
+    spot: true
+    autoscaling: {enabled: true, min: 0, max: 20}
+    taints:
+      - {key: workload, value: batch, effect: NoSchedule}
+
+aks:
+  resourceGroup: rg-prod-aks
+  createResourceGroup: true
+  tier: standard
+  networkPlugin: azure
+  networkPluginMode: overlay
+  networkPolicy: cilium
+  podCidr: 10.244.0.0/16
+  enableWorkloadIdentity: true

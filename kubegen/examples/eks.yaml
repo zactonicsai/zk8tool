@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=../schema/cluster.schema.yaml
+apiVersion: kubegen/v1
+provider: eks
+name: prod-eks
+kubernetesVersion: "1.33"
+region: us-east-1
+tags:
+  env: prod
+
+nodePools:
+  - name: general
+    size: m6i.large
+    diskSizeGB: 80
+    autoscaling: {enabled: true, min: 2, max: 6}
+    labels: {workload: general}
+  - name: spot
+    count: 2
+    size: m6i.xlarge
+    spot: true
+    taints:
+      - {key: spot, value: "true", effect: NoSchedule}
+
+eks:
+  profile: prod
+  availabilityZones: [us-east-1a, us-east-1b, us-east-1c]
+  vpcCidr: 10.20.0.0/16
+  natGateway: Single
+  withOIDC: true
+  privateNetworking: true
+  addons: [vpc-cni, coredns, kube-proxy, aws-ebs-csi-driver]

@@ -1,0 +1,89 @@
+# Local Kubernetes cluster running as Docker containers (kind).
+#
+# Usage:
+#   terraform init
+#   terraform apply
+#   terraform destroy      # removes the cluster
+#
+# Override settings in terraform.tfvars (see terraform.tfvars.example).
+
+provider "kind" {}
+
+locals {
+  # Host -> node port mappings, published on the first control-plane node.
+  # ingress_ready adds 80 and 443 so an ingress controller is reachable on
+  # http://localhost and https://localhost.
+  port_mappings = concat(
+    var.ingress_ready ? [
+      { container_port = 80, host_port = 80, protocol = "TCP" },
+      { container_port = 443, host_port = 443, protocol = "TCP" },
+    ] : [],
+    var.extra_port_mappings,
+  )
+}
+
+resource "kind_cluster" "this" {
+  name       = var.name
+  node_image = var.node_image # null = the default image of the provider's kind version
+
+  # Block until the control plane reports ready.
+  wait_for_ready = true
+
+  # null = merge into the default kubeconfig (~/.kube/config).
+  kubeconfig_path = var.kubeconfig_path == null ? null : pathexpand(var.kubeconfig_path)
+
+  kind_config {
+    kind        = "Cluster"
+    api_version = "kind.x-k8s.io/v1alpha4"
+
+    networking {
+      api_server_address  = var.api_server_address
+      api_server_port     = var.api_server_port
+      pod_subnet          = var.pod_subnet
+      service_subnet      = var.service_subnet
+      disable_default_cni = var.disable_default_cni # true = install your own CNI afterwards
+    }
+
+    # First control-plane node: carries the port mappings and, when
+    # ingress_ready is set, the ingress-ready=true label that ingress
+    # controller manifests for kind select on.
+    node {
+      role = "control-plane"
+
+      kubeadm_config_patches = var.ingress_ready ? [
+        <<-PATCH
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+        PATCH
+      ] : []
+
+      dynamic "extra_port_mappings" {
+        for_each = local.port_mappings
+        content {
+          container_port = extra_port_mappings.value.container_port
+          host_port      = extra_port_mappings.value.host_port
+          protocol       = extra_port_mappings.value.protocol
+        }
+      }
+    }
+
+    # Additional control-plane nodes (kind adds a load balancer container
+    # in front of them automatically).
+    dynamic "node" {
+      for_each = range(var.control_plane_nodes - 1)
+      content {
+        role = "control-plane"
+      }
+    }
+
+    # Worker nodes.
+    dynamic "node" {
+      for_each = range(var.worker_nodes)
+      content {
+        role = "worker"
+      }
+    }
+  }
+}

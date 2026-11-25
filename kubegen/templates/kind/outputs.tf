@@ -1,0 +1,15 @@
+output "cluster_name" {
+  description = "Name of the kind cluster."
+  value       = kind_cluster.this.name
+}
+
+output "endpoint" {
+  description = "Kubernetes API server URL."
+  value       = kind_cluster.this.endpoint
+}
+
+output "kubeconfig" {
+  description = "Kubeconfig for the cluster (terraform output -raw kubeconfig)."
+  value       = kind_cluster.this.kubeconfig
+  sensitive   = true
+}

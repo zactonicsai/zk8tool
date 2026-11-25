@@ -1,0 +1,318 @@
+# kubegen cluster definition schema (JSON Schema draft 2020-12, written in YAML).
+#
+# One file describes one cluster. `provider` selects the target platform and
+# the matching provider block (kind / aks / eks / vks / dks) carries the
+# platform-specific settings. Blocks for other providers may stay in the file;
+# they are ignored.
+#
+# Editor support: add this line to the top of a cluster file
+#   # yaml-language-server: $schema=../schema/cluster.schema.yaml
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://example.com/kubegen/cluster.schema.yaml
+title: kubegen cluster definition
+type: object
+additionalProperties: false
+required: [apiVersion, provider, name]
+
+properties:
+  apiVersion:
+    description: Schema version of this file.
+    const: kubegen/v1
+
+  provider:
+    description: Target platform.
+    enum:
+      - kind   # Kubernetes in Docker (local)
+      - aks    # Azure Kubernetes Service
+      - eks    # Amazon Elastic Kubernetes Service
+      - vks    # VMware vSphere Kubernetes Service
+      - dks    # DigitalOcean Kubernetes
+
+  name:
+    description: Cluster name (lowercase DNS label).
+    type: string
+    maxLength: 63
+    pattern: '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'
+
+  kubernetesVersion:
+    description: |
+      Kubernetes version. Always quote it ("1.30", not 1.30).
+        kind: full patch version, e.g. "1.33.1" (becomes kindest/node:v1.33.1)
+        aks:  "1.33" or "1.33.2"            (omit for the AKS default)
+        eks:  "1.33"                        (omit for the eksctl default)
+        vks:  full release name from `kubectl get kr`, e.g. "v1.33.1+vmware.1-fips" (required)
+        dks:  doctl version slug, e.g. "1.33.1-do.0", or "latest" (default)
+    type: string
+    minLength: 1
+
+  region:
+    description: Cloud region / location (aks, eks, dks). E.g. eastus, us-east-1, nyc3.
+    type: string
+    minLength: 1
+
+  tags:
+    description: |
+      Key/value tags applied to the cluster. aks/eks: resource tags,
+      vks: labels on the Cluster object, dks: "key:value" tags, kind: ignored.
+    type: object
+    additionalProperties: {type: string}
+
+  kubeconfig:
+    type: object
+    additionalProperties: false
+    properties:
+      path:
+        description: |
+          File the cluster credentials are written to. Default: the standard
+          kubeconfig (~/.kube/config); for vks, ./<name>.kubeconfig.
+        type: string
+        minLength: 1
+
+  nodePools:
+    description: |
+      Worker node pools (aks, eks, vks, dks). The first pool is the AKS system
+      pool. Ignored by kind, which uses kind.controlPlaneNodes/workerNodes.
+    type: array
+    items: {$ref: '#/$defs/nodePool'}
+
+  kind: {$ref: '#/$defs/kind'}
+  aks: {$ref: '#/$defs/aks'}
+  eks: {$ref: '#/$defs/eks'}
+  vks: {$ref: '#/$defs/vks'}
+  dks: {$ref: '#/$defs/dks'}
+
+# Per-provider requirements.
+allOf:
+  - if: {properties: {provider: {const: aks}}, required: [provider]}
+    then:
+      required: [region, nodePools, aks]
+      properties:
+        nodePools:
+          minItems: 1
+          items:
+            required: [size]
+            properties:
+              name: {pattern: '^[a-z][a-z0-9]{0,11}$'}   # AKS pool name limit
+  - if: {properties: {provider: {const: eks}}, required: [provider]}
+    then:
+      required: [region, nodePools]
+      properties:
+        nodePools: {minItems: 1, items: {required: [size]}}
+  - if: {properties: {provider: {const: vks}}, required: [provider]}
+    then:
+      required: [kubernetesVersion, nodePools, vks]
+      properties:
+        nodePools:
+          minItems: 1
+          items:
+            # not available through the VKS Cluster API topology
+            properties: {diskSizeGB: false, zones: false, labels: false, taints: false, spot: false}
+  - if: {properties: {provider: {const: dks}}, required: [provider]}
+    then:
+      required: [region, nodePools]
+      properties:
+        nodePools:
+          minItems: 1
+          items:
+            required: [size]
+            properties: {diskSizeGB: false, zones: false, spot: false}
+
+$defs:
+  duration:
+    description: Number followed by s, m or h, e.g. 120s, 30m.
+    type: string
+    pattern: '^[0-9]+[smh]$'
+
+  cidr:
+    type: string
+    pattern: '^[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}$'
+
+  nodePool:
+    type: object
+    additionalProperties: false
+    required: [name]
+    properties:
+      name:
+        type: string
+        pattern: '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'
+        maxLength: 63
+      count:
+        description: Number of nodes. With autoscaling enabled, the initial count (default autoscaling.min).
+        type: integer
+        minimum: 0
+      size:
+        description: |
+          Machine size. aks: VM size (Standard_D4s_v5), eks: instance type
+          (m6i.large), dks: droplet slug (s-4vcpu-8gb), vks: VM class
+          (best-effort-large; defaults to vks.vmClass).
+        type: string
+        minLength: 1
+      diskSizeGB:
+        description: OS / root disk size in GB (aks, eks).
+        type: integer
+        minimum: 1
+      autoscaling:
+        type: object
+        additionalProperties: false
+        required: [enabled]
+        properties:
+          enabled: {type: boolean}
+          min: {type: integer, minimum: 0}
+          max: {type: integer, minimum: 1}
+        description: |
+          Autoscaling bounds. aks/dks: enables the managed autoscaler.
+          eks: sets the node group min/max only (install Cluster Autoscaler or
+          Karpenter separately). vks: sets Cluster Autoscaler annotations
+          (the autoscaler package must be installed on the cluster).
+      zones:
+        description: Availability zones (aks e.g. ["1","2","3"]; eks e.g. [us-east-1a]).
+        type: array
+        items: {type: string}
+      labels:
+        description: Kubernetes node labels (aks, eks, dks).
+        type: object
+        additionalProperties: {type: string}
+      taints:
+        description: Kubernetes node taints (aks, eks, dks).
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [key, effect]
+          properties:
+            key: {type: string, minLength: 1}
+            value: {type: string}
+            effect: {enum: [NoSchedule, PreferNoSchedule, NoExecute]}
+      spot:
+        description: 'Use spot capacity. aks - not allowed on the first (system) pool. Also supported on eks.'
+        type: boolean
+
+  kind:
+    description: Settings for provider "kind". Tools - docker, kind, kubectl.
+    type: object
+    additionalProperties: false
+    properties:
+      nodeImage:
+        description: Node image; overrides kubernetesVersion. E.g. kindest/node:v1.33.1
+        type: string
+      controlPlaneNodes: {type: integer, minimum: 1, default: 1}
+      workerNodes: {type: integer, minimum: 0, default: 0}
+      apiServerAddress: {type: string, description: 'Host address the API server listens on (default 127.0.0.1).'}
+      apiServerPort: {type: integer, minimum: 1, maximum: 65535}
+      podSubnet: {$ref: '#/$defs/cidr'}
+      serviceSubnet: {$ref: '#/$defs/cidr'}
+      disableDefaultCNI: {type: boolean, description: 'Skip kindnet so another CNI can be installed.'}
+      ingressReady:
+        description: Label the first control-plane node ingress-ready=true and map host ports 80 and 443 to it.
+        type: boolean
+      extraPortMappings:
+        description: Host-to-node port mappings on the first control-plane node.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [containerPort, hostPort]
+          properties:
+            containerPort: {type: integer, minimum: 1, maximum: 65535}
+            hostPort: {type: integer, minimum: 1, maximum: 65535}
+            protocol: {enum: [TCP, UDP, SCTP], default: TCP}
+      waitTimeout:
+        $ref: '#/$defs/duration'
+        description: How long to wait for the control plane to be ready (default 120s).
+
+  aks:
+    description: Settings for provider "aks". Tools - az, kubectl.
+    type: object
+    additionalProperties: false
+    required: [resourceGroup]
+    properties:
+      subscription: {type: string, description: 'Subscription name or ID (default - the active az subscription).'}
+      resourceGroup: {type: string, minLength: 1}
+      createResourceGroup: {type: boolean, description: 'Create the resource group in `region` first.', default: false}
+      tier: {enum: [free, standard, premium], default: free}
+      networkPlugin: {enum: [azure, kubenet, none]}
+      networkPluginMode: {enum: [overlay]}
+      networkPolicy: {enum: [azure, calico, cilium, none]}
+      podCidr: {$ref: '#/$defs/cidr'}
+      serviceCidr: {$ref: '#/$defs/cidr'}
+      dnsServiceIP: {type: string}
+      vnetSubnetId: {type: string, description: 'Resource ID of an existing subnet for the nodes.'}
+      privateCluster: {type: boolean}
+      enableOIDCIssuer: {type: boolean}
+      enableWorkloadIdentity: {type: boolean, description: 'Implies enableOIDCIssuer.'}
+      attachACR: {type: string, description: 'Name or ID of a container registry to grant pull access to.'}
+      adminUsername: {type: string}
+      sshPublicKeyPath:
+        description: SSH public key for the nodes. Omit to let az generate one (--generate-ssh-keys).
+        type: string
+
+  eks:
+    description: Settings for provider "eks". Tools - aws, eksctl, kubectl.
+    type: object
+    additionalProperties: false
+    properties:
+      profile: {type: string, description: 'AWS CLI profile to use.'}
+      availabilityZones: {type: array, items: {type: string}, minItems: 2}
+      vpcCidr: {$ref: '#/$defs/cidr'}
+      natGateway: {enum: [Single, HighlyAvailable, Disable], default: Single}
+      endpointPublicAccess: {type: boolean, default: true}
+      endpointPrivateAccess: {type: boolean, default: false}
+      withOIDC: {type: boolean, description: 'Create the IAM OIDC provider (needed for IRSA).'}
+      addons:
+        description: EKS managed add-ons, e.g. [vpc-cni, coredns, kube-proxy, aws-ebs-csi-driver].
+        type: array
+        items: {type: string}
+      privateNetworking: {type: boolean, description: 'Place all node groups in private subnets.'}
+      amiFamily: {type: string, description: 'Node AMI family, e.g. AmazonLinux2023, Bottlerocket.'}
+
+  vks:
+    description: Settings for provider "vks". Tools - kubectl (+ kubectl-vsphere when login.method is kubectl-vsphere).
+    type: object
+    additionalProperties: false
+    required: [namespace, clusterClass, vmClass, storageClass]
+    properties:
+      login:
+        type: object
+        additionalProperties: false
+        required: [method]
+        properties:
+          method:
+            description: |
+              kubectl-vsphere - the script logs in to the Supervisor with `kubectl vsphere login`.
+              none            - you are already logged in (e.g. via the VCF CLI); the script
+                                only switches to `context` if set.
+            enum: [kubectl-vsphere, none]
+          server: {type: string, description: 'Supervisor control plane address (kubectl-vsphere).'}
+          username: {type: string, description: 'vCenter SSO user (kubectl-vsphere). Password comes from KUBECTL_VSPHERE_PASSWORD or a prompt.'}
+          insecureSkipTLSVerify: {type: boolean}
+          context: {type: string, description: 'kubectl context to switch to (method none).'}
+        if: {properties: {method: {const: kubectl-vsphere}}}
+        then: {required: [server, username]}
+      namespace: {type: string, minLength: 1, description: 'vSphere Namespace the cluster is created in.'}
+      apiVersion: {type: string, default: cluster.x-k8s.io/v1beta1, description: 'Cluster API version served by your Supervisor.'}
+      clusterClass:
+        description: ClusterClass name - list them with `kubectl get clusterclass -A`. E.g. builtin-generic-v3.4.0 or tanzukubernetescluster.
+        type: string
+        minLength: 1
+      clusterClassNamespace: {type: string, description: 'Namespace of the ClusterClass when it is not in `namespace`, e.g. vmware-system-vks-public.'}
+      controlPlaneReplicas: {enum: [1, 3, 5], default: 1}
+      vmClass: {type: string, minLength: 1, description: 'Default VM class (control plane and pools without `size`).'}
+      storageClass: {type: string, minLength: 1, description: 'Storage class / policy name for node disks.'}
+      podCidr: {$ref: '#/$defs/cidr'}
+      serviceCidr: {$ref: '#/$defs/cidr'}
+      serviceDomain: {type: string, default: cluster.local}
+      waitTimeout:
+        $ref: '#/$defs/duration'
+        description: How long to wait for the cluster to become Ready (default 30m).
+
+  dks:
+    description: Settings for provider "dks" (DigitalOcean Kubernetes). Tools - doctl, kubectl.
+    type: object
+    additionalProperties: false
+    properties:
+      context: {type: string, description: 'doctl auth context to use.'}
+      ha: {type: boolean, description: 'Highly available control plane.'}
+      autoUpgrade: {type: boolean}
+      surgeUpgrade: {type: boolean}
+      vpcUUID: {type: string}
+      maintenanceWindow: {type: string, description: 'E.g. "saturday=02:00" or "any=00:00".'}

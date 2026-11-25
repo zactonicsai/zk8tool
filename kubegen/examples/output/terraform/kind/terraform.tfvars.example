@@ -1,0 +1,56 @@
+# Example variable overrides for the kind cluster "dev-local".
+#
+# Copy this file to terraform.tfvars (loaded automatically), or to a file per
+# environment and pass it with -var-file:
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#   terraform apply
+#
+#   terraform apply -var-file=staging.tfvars
+#
+# Every setting below is commented out and shows its current default, which
+# was generated from examples/kind.yaml. Uncomment a setting and change it to override the
+# default; settings you leave commented keep their default.
+
+# Cluster name.
+# name = "dev-local"
+
+# Node image, which sets the Kubernetes version. null = the provider's default.
+# Image tags are listed in the kind release notes, e.g. "kindest/node:v1.33.1".
+# node_image = "kindest/node:v1.33.1"
+
+# Number of control-plane nodes (1, or 3 for an HA test setup).
+# control_plane_nodes = 1
+
+# Number of worker nodes. 0 = workloads run on the control plane.
+# worker_nodes = 2
+
+# Label the first control-plane node ingress-ready=true and publish host ports 80 and 443.
+# ingress_ready = true
+
+# Extra host ports published on the first control-plane node.
+# Example: [{ container_port = 30080, host_port = 8080 }] exposes NodePort 30080 on localhost:8080.
+# extra_port_mappings = [
+#   {
+#     container_port = 30080
+#     host_port      = 8080
+#   },
+# ]
+
+# Host address the API server listens on. null = 127.0.0.1.
+# api_server_address = null
+
+# Host port of the API server. null = a random free port.
+# api_server_port = null
+
+# Pod network CIDR. null = kind default.
+# pod_subnet = "10.244.0.0/16"
+
+# Service network CIDR. null = kind default.
+# service_subnet = "10.96.0.0/12"
+
+# Skip kindnet so another CNI (Cilium, Calico, ...) can be installed.
+# disable_default_cni = false
+
+# File to write the kubeconfig to. null = merge into ~/.kube/config.
+# kubeconfig_path = null

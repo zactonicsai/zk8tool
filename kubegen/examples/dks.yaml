@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=../schema/cluster.schema.yaml
+apiVersion: kubegen/v1
+provider: dks
+name: staging-do
+kubernetesVersion: latest       # or a slug from: doctl kubernetes options versions
+region: nyc3
+tags:
+  env: staging
+
+nodePools:
+  - name: default
+    count: 3
+    size: s-4vcpu-8gb
+  - name: jobs
+    size: c-4
+    autoscaling: {enabled: true, min: 1, max: 5}
+    labels: {workload: jobs}
+    taints:
+      - {key: workload, value: jobs, effect: NoSchedule}
+
+dks:
+  ha: true
+  autoUpgrade: true
+  surgeUpgrade: true
+  maintenanceWindow: saturday=02:00

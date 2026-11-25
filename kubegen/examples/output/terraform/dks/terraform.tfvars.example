@@ -1,0 +1,86 @@
+# Example variable overrides for the dks cluster "staging-do".
+#
+# Copy this file to terraform.tfvars (loaded automatically), or to a file per
+# environment and pass it with -var-file:
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#   terraform apply
+#
+#   terraform apply -var-file=staging.tfvars
+#
+# Every setting below is commented out and shows its current default, which
+# was generated from examples/dks.yaml. Uncomment a setting and change it to override the
+# default; settings you leave commented keep their default.
+
+# Cluster name.
+# name = "staging-do"
+
+# DigitalOcean region slug.
+# List them: doctl kubernetes options regions
+# region = "nyc3"
+
+# "latest", a prefix such as "1.33." (newest matching patch), or a full slug such as "1.33.1-do.0".
+# List the available slugs: doctl kubernetes options versions
+# kubernetes_version = "latest"
+
+# Tags applied to the cluster and its droplets.
+# tags = ["env:staging"]
+
+# Highly available control plane. Cannot be switched off once enabled.
+# ha = true
+
+# Install patch releases automatically during the maintenance window.
+# auto_upgrade = true
+
+# Add temporary nodes during upgrades to keep capacity.
+# surge_upgrade = true
+
+# UUID of the VPC to place the cluster in. null = the region's default VPC.
+# vpc_uuid = null
+
+# When automatic maintenance may start. null = chosen by DigitalOcean.
+# Example: { day = "saturday", start_time = "02:00" } (UTC; day may be "any").
+# maintenance_window = {
+#   day        = "saturday"
+#   start_time = "02:00"
+# }
+
+# Default node pool. Changing its name or size replaces the cluster.
+# Fixed size: set node_count. Autoscaled: set autoscaling = { min = 1, max = 5 } instead. List droplet sizes: doctl kubernetes options sizes
+# default_node_pool = {
+#   name       = "default"
+#   size       = "s-4vcpu-8gb"
+#   node_count = 3
+# }
+
+# Additional node pools, keyed by pool name.
+# Fixed size: set node_count. Autoscaled: set autoscaling = { min = 1, max = 5 } instead.
+# To add a pool, add an entry:
+#   cpu = {
+#     size       = "c-8"
+#     node_count = 2
+#     labels     = { workload = "cpu" }
+#   }
+#
+# additional_node_pools = {
+#   jobs = {
+#     size        = "c-4"
+#     autoscaling = {
+#       min = 1
+#       max = 5
+#     }
+#     labels      = {
+#       workload = "jobs"
+#     }
+#     taints      = [
+#       {
+#         key    = "workload"
+#         value  = "jobs"
+#         effect = "NoSchedule"
+#       },
+#     ]
+#   }
+# }
+
+# File to write the kubeconfig to. null = do not write a file.
+# kubeconfig_path = null

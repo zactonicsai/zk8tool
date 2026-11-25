@@ -1,0 +1,99 @@
+# Example variable overrides for the eks cluster "prod-eks".
+#
+# Copy this file to terraform.tfvars (loaded automatically), or to a file per
+# environment and pass it with -var-file:
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#   terraform apply
+#
+#   terraform apply -var-file=staging.tfvars
+#
+# Every setting below is commented out and shows its current default, which
+# was generated from examples/eks.yaml. Uncomment a setting and change it to override the
+# default; settings you leave commented keep their default.
+
+# Cluster name; also prefixes the VPC and IAM role names.
+# name = "prod-eks"
+
+# AWS region.
+# region = "us-east-1"
+
+# AWS CLI profile to use. null = default credential chain.
+# aws_profile = "prod"
+
+# Kubernetes version, e.g. "1.33". null = current EKS default.
+# kubernetes_version = "1.33"
+
+# Tags applied to every AWS resource.
+# tags = {
+#   env = "prod"
+# }
+
+# Zones to create subnets in (at least two). [] = the region's first three.
+# availability_zones = ["us-east-1a", "us-east-1b", "us-east-1c"]
+
+# CIDR of the new VPC; split into 16 equal subnet blocks.
+# vpc_cidr = "10.20.0.0/16"
+
+# NAT for the private subnets: Single, HighlyAvailable (one per zone) or Disable.
+# Single is cheapest. Use HighlyAvailable for production.
+# nat_gateway = "Single"
+
+# Make the API server reachable from the internet.
+# endpoint_public_access = true
+
+# Make the API server reachable from inside the VPC.
+# endpoint_private_access = false
+
+# Place nodes in the private subnets (no public IPs; needs a NAT gateway).
+# private_networking = true
+
+# Create the IAM OIDC provider, needed for IAM Roles for Service Accounts.
+# enable_oidc = true
+
+# EKS managed add-ons to install, e.g. vpc-cni, coredns, kube-proxy, aws-ebs-csi-driver.
+# addons = ["vpc-cni", "coredns", "kube-proxy", "aws-ebs-csi-driver"]
+
+# Node AMI type, e.g. AL2023_x86_64_STANDARD or BOTTLEROCKET_x86_64. null = EKS default.
+# ami_type = null
+
+# Managed node groups, keyed by group name.
+# Keep min_size <= desired_size <= max_size.
+# To add a group, add an entry:
+#   memory = {
+#     instance_type = "r6i.xlarge"
+#     desired_size  = 2
+#     min_size      = 2
+#     max_size      = 4
+#     labels        = { workload = "memory" }
+#   }
+#
+# node_pools = {
+#   general = {
+#     instance_type = "m6i.large"
+#     desired_size  = 2
+#     min_size      = 2
+#     max_size      = 6
+#     disk_size_gb  = 80
+#     labels        = {
+#       workload = "general"
+#     }
+#   }
+#   spot    = {
+#     instance_type = "m6i.xlarge"
+#     desired_size  = 2
+#     min_size      = 2
+#     max_size      = 2
+#     taints        = [
+#       {
+#         key    = "spot"
+#         value  = "true"
+#         effect = "NoSchedule"
+#       },
+#     ]
+#     spot          = true
+#   }
+# }
+
+# Kubeconfig file used in the update_kubeconfig_command output. null = default.
+# kubeconfig_path = null
