@@ -1,0 +1,100 @@
+# Values for the keycloak chart.
+#
+#   helm upgrade --install keycloak ./chart -n keycloak --create-namespace -f my-values.yaml
+#
+# The chart follows Keycloak's production guidance where it can:
+#   - the official image, started in production mode (`start`, not `start-dev`)
+#   - PostgreSQL instead of the built-in development database
+#   - a fixed public hostname, TLS ended at the Istio gateway
+#   - health checks on the separate management port
+#   - a non-root, locked-down container
+#   - passwords kept in a Kubernetes Secret
+# What it deliberately keeps simple is called out below as "DEV DEFAULT".
+#
+# Resource names are fixed ("keycloak", "keycloak-postgres") so that other
+# components can rely on the address keycloak.<namespace>.svc.cluster.local.
+# Install one release per namespace.
+
+image:
+  repository: quay.io/keycloak/keycloak
+  # Follows the newest 26.6.x patch. For production pin an exact version,
+  # e.g. "26.6.4", so every pod runs the same build.
+  tag: "26.6"
+  pullPolicy: IfNotPresent
+
+# Number of Keycloak pods. 2 or more gives high availability; the pods find
+# each other through the database, so no extra setup is needed.
+replicas: 1
+
+# Public host name of Keycloak. DNS must point it at the Istio gateway.
+hostname: keycloak.example.com
+
+# Full public URL, when it is not simply https://<hostname> - for example
+# http://keycloak.localhost:8080 on a local cluster. Empty = https://<hostname>.
+externalUrl: ""
+
+admin:
+  # DEV DEFAULT: admin / admin. Anyone who can reach the admin console can
+  # take over every login. Change the password before exposing Keycloak:
+  #   --set admin.password='<long random password>'
+  # Keycloak treats this first admin as temporary; create a personal admin
+  # account in the console and delete this one.
+  username: admin
+  password: admin
+
+database:
+  # Empty host = use the PostgreSQL bundled with this chart (see below).
+  # For production point this at a managed or separately operated PostgreSQL.
+  host: ""
+  port: 5432
+  name: keycloak
+  username: keycloak
+  # DEV DEFAULT. Change it:  --set database.password='<password>'
+  password: keycloak
+
+postgresql:
+  # A single PostgreSQL pod with a persistent volume. Fine for development
+  # and small setups; it has no replication or backups.
+  enabled: true
+  image: docker.io/library/postgres:17
+  storage: 2Gi
+  # Empty = the cluster's default storage class.
+  storageClassName: ""
+
+realm:
+  # Creates a realm with a client for oauth2-proxy the first time Keycloak
+  # starts. Keycloak never overwrites a realm that already exists, so later
+  # changes to these values are NOT applied; change the realm in the admin
+  # console instead (or delete it there and restart Keycloak).
+  enabled: true
+  name: sso
+
+  client:
+    # Must match oauth2-proxy's client ID and secret.
+    id: oauth2-proxy
+    secret: change-me
+    # Where Keycloak may send people after sign-in.
+    redirectUris:
+      - https://app.example.com/oauth2/callback
+
+  demoUser:
+    # DEV DEFAULT: a user to try sign-in with. Disable for real use.
+    enabled: true
+    username: demo
+    password: demo
+    email: demo@example.com
+
+istio:
+  # Route `hostname` on the Istio gateway to Keycloak. The host must also be
+  # listed in the sso-config chart's publicHosts so the gateway accepts it
+  # (and does not ask for sign-in on the sign-in page itself).
+  enabled: true
+  gateway: istio-ingress/sso-gateway
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    # Keycloak sizes its Java heap from this limit.
+    memory: 2Gi

@@ -1,0 +1,38 @@
+# Keycloak running IN this cluster, installed by this Terraform from
+# ../../keycloak/chart and wired to the gateway automatically.
+#
+# Nothing to register by hand: the chart creates the realm "sso" with a
+# client whose ID and secret are the two values below.
+#
+#   export TF_VAR_oidc_client_secret="$(openssl rand -hex 24)"
+#   terraform apply -var-file=examples/keycloak-in-cluster.tfvars.example
+#
+# Keep that secret the same on later applies: Keycloak imports the realm
+# only once.
+
+hosts = ["app.example.com"]
+
+oidc_client_id = "oauth2-proxy"
+
+keycloak = {
+  host = "keycloak.example.com"
+
+  # Change the password before exposing Keycloak; admin / admin is for
+  # private test clusters only.
+  admin_username = "admin"
+  admin_password = "admin"
+
+  # Remove the demo / demo test user for real use.
+  # demo_user = false
+}
+
+# The certificate in the TLS secret must cover BOTH hosts above.
+# tls_secret_name = "sso-gateway-tls"
+
+# --- Local kind cluster over plain HTTP instead ------------------------------
+# hosts         = ["localhost"]
+# tls_enabled   = false
+# external_port = 8080
+# gateway_service_type = "NodePort"
+# gateway_node_ports   = { http = 30080, https = 30443 }
+# keycloak = { host = "keycloak.localhost" }

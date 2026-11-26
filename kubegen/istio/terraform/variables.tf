@@ -66,8 +66,29 @@ variable "public_paths" {
 # --- Identity provider (OpenID Connect) --------------------------------------
 
 variable "oidc_issuer_url" {
-  description = "Issuer URL of your identity provider, e.g. https://login.microsoftonline.com/<tenant-id>/v2.0"
+  description = "Issuer URL of an identity provider outside the cluster, e.g. https://login.microsoftonline.com/<tenant-id>/v2.0. Leave null when using `keycloak`."
   type        = string
+  default     = null
+}
+
+variable "keycloak" {
+  description = "Use a Keycloak that runs in this cluster as the identity provider (see ../../keycloak). null = use oidc_issuer_url instead."
+  type = object({
+    host           = string                       # public host name, e.g. keycloak.example.com
+    realm          = optional(string, "sso")      # realm people sign in to
+    namespace      = optional(string, "keycloak") # namespace Keycloak runs in
+    install        = optional(bool, true)         # install the keycloak chart from here
+    admin_username = optional(string, "admin")
+    admin_password = optional(string, "admin")    # change this outside a private test cluster
+    demo_user      = optional(bool, true)         # create the demo / demo test user
+  })
+  default = null
+}
+
+variable "public_hosts" {
+  description = "Extra host names the gateway serves without sign-in. The Keycloak host is added automatically."
+  type        = list(string)
+  default     = []
 }
 
 variable "oidc_client_id" {

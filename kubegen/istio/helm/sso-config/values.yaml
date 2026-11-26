@@ -8,6 +8,12 @@
 hosts:
   - app.example.com
 
+# Host names the gateway also serves WITHOUT sign-in. The identity provider
+# itself belongs here when it runs in this cluster (for example Keycloak at
+# keycloak.example.com): people must reach its login page before they are
+# signed in. With HTTPS the gateway certificate must cover these hosts too.
+publicHosts: []
+
 gateway:
   # Name of the Istio Gateway resource. Your own VirtualServices attach to it
   # as "<namespace>/<name>", e.g. istio-ingress/sso-gateway.

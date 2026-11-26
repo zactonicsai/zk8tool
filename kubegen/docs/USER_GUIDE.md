@@ -263,6 +263,8 @@ Details and rootless caveats: [podman/README.md](../podman/README.md).
 Once a cluster is running, `istio/` installs Istio and requires sign-in
 through your identity provider for everything behind its ingress gateway.
 It is separate from kubegen: follow [istio/README.md](../istio/README.md).
+If you have no identity provider, `keycloak/` installs Keycloak in the
+cluster and connects it for you: see [keycloak/README.md](../keycloak/README.md).
 
 ## Differences between the two outputs
 

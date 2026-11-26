@@ -51,6 +51,9 @@ Exit codes: 2 usage, 3 invalid cluster definition, 4 missing tools.
   Podman container. See [podman/README.md](podman/README.md).
 - `istio/` - Istio with SSO sign-in at the ingress gateway, as Helm values
   and Terraform. See [istio/README.md](istio/README.md).
+- `keycloak/` - Keycloak as an in-cluster identity provider, connected to
+  the Istio sign-in, installed by one script. See
+  [keycloak/README.md](keycloak/README.md).
 - `templates/` - the Terraform for each provider (embedded in the binary).
 - `terraform.go` - Terraform variables and file generation.
 - `validate.go` - the same rules enforced by the program.

@@ -1,0 +1,58 @@
+{{- if .Values.realm.enabled }}
+# Realm definition imported on first start (`--import-realm`). It is a
+# Secret, not a ConfigMap, because it contains the client secret.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: keycloak-realm
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: keycloak
+type: Opaque
+stringData:
+  realm.json: |
+    {
+      "realm": {{ .Values.realm.name | quote }},
+      "enabled": true,
+      "sslRequired": "external",
+      "registrationAllowed": false,
+      "loginWithEmailAllowed": true,
+      "bruteForceProtected": true,
+      "clients": [
+        {
+          "clientId": {{ .Values.realm.client.id | quote }},
+          "name": "Istio gateway sign-in (oauth2-proxy)",
+          "enabled": true,
+          "protocol": "openid-connect",
+          "publicClient": false,
+          "clientAuthenticatorType": "client-secret",
+          "secret": {{ .Values.realm.client.secret | quote }},
+          "standardFlowEnabled": true,
+          "implicitFlowEnabled": false,
+          "directAccessGrantsEnabled": false,
+          "serviceAccountsEnabled": false,
+          "redirectUris": {{ .Values.realm.client.redirectUris | toJson }},
+          "webOrigins": ["+"],
+          "attributes": {
+            "pkce.code.challenge.method": "S256",
+            "post.logout.redirect.uris": "+"
+          }
+        }
+      ]
+      {{- if .Values.realm.demoUser.enabled }},
+      "users": [
+        {
+          "username": {{ .Values.realm.demoUser.username | quote }},
+          "enabled": true,
+          "email": {{ .Values.realm.demoUser.email | quote }},
+          "emailVerified": true,
+          "firstName": "Demo",
+          "lastName": "User",
+          "credentials": [
+            { "type": "password", "value": {{ .Values.realm.demoUser.password | quote }}, "temporary": false }
+          ]
+        }
+      ]
+      {{- end }}
+    }
+{{- end }}

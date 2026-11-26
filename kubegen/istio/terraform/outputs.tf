@@ -27,3 +27,8 @@ output "gateway_for_virtualservices" {
   description = "Value for spec.gateways in your own VirtualServices."
   value       = "istio-ingress/sso-gateway"
 }
+
+output "keycloak_admin_url" {
+  description = "Keycloak admin console (only with var.keycloak)."
+  value       = local.use_keycloak ? "${local.scheme}://${var.keycloak.host}${local.port_suffix}/admin" : null
+}

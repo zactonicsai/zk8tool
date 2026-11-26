@@ -50,6 +50,20 @@ locals {
   # The identity provider sends people back here after sign-in.
   redirect_url = "${local.external_url}/oauth2/callback"
 
+  # --- Keycloak running in this cluster (var.keycloak) ----------------------
+  use_keycloak = var.keycloak != null
+
+  # What browsers use, and what Keycloak writes into tokens as the issuer.
+  keycloak_public = local.use_keycloak ? "${local.scheme}://${var.keycloak.host}${local.port_suffix}/realms/${var.keycloak.realm}" : ""
+  # What oauth2-proxy uses to talk to Keycloak directly, inside the cluster.
+  keycloak_internal = local.use_keycloak ? "http://keycloak.${var.keycloak.namespace}.svc.cluster.local:8080/realms/${var.keycloak.realm}" : ""
+
+  issuer_url = local.use_keycloak ? local.keycloak_public : var.oidc_issuer_url
+
+  # Hosts the gateway serves without sign-in: Keycloak's own login pages
+  # must be reachable before anyone is signed in.
+  public_hosts = distinct(concat(var.public_hosts, local.use_keycloak ? [var.keycloak.host] : []))
+
   # Create the TLS secret here only when certificate files are given.
   create_tls_secret = var.tls_enabled && var.tls_cert_file != null && var.tls_key_file != null
 }
@@ -185,7 +199,7 @@ resource "helm_release" "oauth2_proxy" {
       }
       extraArgs = merge(
         {
-          "oidc-issuer-url" = var.oidc_issuer_url
+          "oidc-issuer-url" = local.issuer_url
           "redirect-url"    = local.redirect_url
           "scope"           = var.oidc_scopes
           # Secure cookies need HTTPS; relaxed only for local HTTP testing.
@@ -196,11 +210,31 @@ resource "helm_release" "oauth2_proxy" {
           for k in ["cookie-domain", "whitelist-domain"] : k => var.cookie_domain
           if var.cookie_domain != null
         },
+        # Keycloak in this cluster: browsers go to its public address, while
+        # oauth2-proxy fetches tokens and signing keys over the cluster
+        # network. That works even where pods cannot reach or do not trust
+        # the public address (local clusters, private certificates).
+        {
+          for k, v in {
+            "skip-oidc-discovery"   = "true"
+            "login-url"             = "${local.keycloak_public}/protocol/openid-connect/auth"
+            "redeem-url"            = "${local.keycloak_internal}/protocol/openid-connect/token"
+            "oidc-jwks-url"         = "${local.keycloak_internal}/protocol/openid-connect/certs"
+            "code-challenge-method" = "S256" # the Keycloak client requires PKCE
+          } : k => v if local.use_keycloak
+        },
         # Provider-specific flags; see the files in examples/.
         var.oidc_extra_args,
       )
     }),
   ]
+
+  lifecycle {
+    precondition {
+      condition     = local.issuer_url != null
+      error_message = "Set oidc_issuer_url (identity provider outside the cluster) or keycloak (Keycloak in this cluster)."
+    }
+  }
 
   # No depends_on for Istio: oauth2-proxy runs without a sidecar and only
   # needs its namespace and secret.
@@ -236,7 +270,8 @@ resource "helm_release" "sso_config" {
 
   values = [
     yamlencode({
-      hosts = var.hosts
+      hosts       = var.hosts
+      publicHosts = local.public_hosts
       gateway = {
         tls = {
           enabled        = var.tls_enabled
@@ -260,4 +295,47 @@ resource "helm_release" "sso_config" {
     helm_release.oauth2_proxy,
     kubernetes_secret.gateway_tls,
   ]
+}
+
+# ---------------------------------------------------------------------------
+# 6. Keycloak (optional): an identity provider inside this cluster
+# ---------------------------------------------------------------------------
+
+# Installed from the chart in ../../keycloak when var.keycloak is set and
+# keycloak.install is true. The chart creates a realm with a client whose ID
+# and secret are the oidc_client_id / oidc_client_secret given above, so
+# oauth2-proxy and Keycloak agree without any manual setup.
+resource "helm_release" "keycloak" {
+  count = local.use_keycloak && try(var.keycloak.install, false) ? 1 : 0
+
+  name             = "keycloak"
+  namespace        = var.keycloak.namespace
+  create_namespace = true
+  chart            = "${path.module}/../../keycloak/chart"
+  timeout          = 900 # the first start builds Keycloak and sets up the database
+
+  values = [
+    yamlencode({
+      hostname    = var.keycloak.host
+      externalUrl = "${local.scheme}://${var.keycloak.host}${local.port_suffix}"
+      admin = {
+        username = var.keycloak.admin_username
+        password = var.keycloak.admin_password
+      }
+      realm = {
+        name = var.keycloak.realm
+        client = {
+          id           = var.oidc_client_id
+          secret       = var.oidc_client_secret
+          redirectUris = [local.redirect_url]
+        }
+        demoUser = {
+          enabled = var.keycloak.demo_user
+        }
+      }
+    }),
+  ]
+
+  # Its VirtualService needs Istio's resource types and the gateway.
+  depends_on = [helm_release.sso_config]
 }

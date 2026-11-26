@@ -9,6 +9,10 @@ Your apps need no login code of their own.
                         |
                         +--> your app (receives X-Auth-Request-Email and friends)
 
+> **No identity provider yet?** `../keycloak` installs Keycloak in the
+> cluster and this Istio setup together, already connected, with one script
+> and nothing to register by hand. Start there.
+
 ## What is in this directory
 
 | Path                                 | Purpose                                                        |
@@ -19,9 +23,10 @@ Your apps need no login code of their own.
 | `helm/values/oauth2-proxy.yaml`      | Values for oauth2-proxy, the service that runs the sign-in     |
 | `helm/sso-config/`                   | Small Helm chart: the Istio Gateway, the sign-in policy, and a test app |
 | `helm/install.sh`, `uninstall.sh`    | Install or remove everything with the `helm` command           |
+| `helm/sso.env.example`               | Settings file for `install.sh`; copy it to `sso.env`           |
 | `terraform/`                         | Install everything with Terraform (uses the same values files) |
 | `terraform/terraform.tfvars.example` | Every setting, with explanations                               |
-| `terraform/examples/`                | Starting points for Entra ID, Okta, Google, Keycloak and a local kind cluster |
+| `terraform/examples/`                | Starting points for Entra ID, Okta, Google, Keycloak (external or in this cluster) and a local kind cluster |
 
 Terraform and `install.sh` install the same thing. **Pick one** and stay
 with it.
@@ -89,11 +94,13 @@ and the command that shows the gateway's address.
 ## Step 3b - Or install with Helm
 
     cd istio/helm
-    export SSO_HOST=app.example.com
-    export OIDC_ISSUER_URL=https://login.microsoftonline.com/<tenant-id>/v2.0
-    export OIDC_CLIENT_ID='<client id>'
-    export OIDC_CLIENT_SECRET='<client secret>'
+    cp sso.env.example sso.env
+    # edit sso.env: SSO_HOST, OIDC_ISSUER_URL, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET
     ./install.sh
+
+The script reads `sso.env` automatically. If a required setting is missing
+it lists which ones and stops before touching the cluster. You can also
+`export` the same names in the shell instead of using the file.
 
 The script checks for `helm`, `kubectl` and `openssl` and prints the
 download link for any that are missing. Optional settings are listed at the
@@ -149,11 +156,28 @@ Your app reads who is signed in from these request headers:
 | `X-Auth-Request-Groups`              | Groups, if the provider sends them|
 | `Authorization: Bearer <ID token>`   | The signed token itself           |
 
+## Using a Keycloak in this cluster
+
+The gateway can use a Keycloak installed from `../keycloak` instead of an
+outside identity provider:
+
+- **Script:** set `KEYCLOAK_HOST` (and leave `OIDC_ISSUER_URL` out) in
+  `sso.env`, or simply run `../keycloak/install.sh`, which installs both.
+- **Terraform:** set the `keycloak` variable; see
+  `terraform/examples/keycloak-in-cluster.tfvars.example`. Terraform then
+  installs the Keycloak chart too.
+
+Either way the Keycloak host becomes a *public host* on the gateway (no
+sign-in is asked for the sign-in pages themselves), and oauth2-proxy talks
+to Keycloak over the cluster network. Other hosts that must skip sign-in go
+in `PUBLIC_HOSTS` / `public_hosts`.
+
 ## Common changes
 
 | Goal                              | Terraform                                         | install.sh                    |
 |-----------------------------------|---------------------------------------------------|-------------------------------|
 | Only your company's accounts      | `allowed_email_domains = ["example.com"]`         | `EMAIL_DOMAINS=example.com`   |
+| Serve another host without sign-in | `public_hosts = ["status.example.com"]`         | `PUBLIC_HOSTS=status.example.com` |
 | Keep some paths public            | `public_paths = ["/healthz", "/public/*"]`        | edit `sso-config/values.yaml` |
 | One sign-in for several sub-domains | `hosts = [...]`, `cookie_domain = ".example.com"` | edit the values files         |
 | Internal load balancer            | `gateway_service_annotations = {...}`             | edit `values/gateway.yaml`    |
@@ -190,6 +214,7 @@ Your app reads who is signed in from these request headers:
 
 | Symptom                                         | Likely cause and fix                                                     |
 |-------------------------------------------------|--------------------------------------------------------------------------|
+| `install.sh`: "these required settings are not set" | Copy `sso.env.example` to `sso.env` and fill in the four required values. |
 | Identity provider says "redirect URI mismatch"  | Register the exact `redirect_uri` from `terraform output`.               |
 | Browser loops between your site and the provider| Cookie not kept: you are on `http` with `tls_enabled = true`, or several hosts without `cookie_domain`. |
 | `RBAC: access denied` (403) on every page       | The gateway cannot reach oauth2-proxy. Check `kubectl get pods -n oauth2-proxy` and that `service` and `port` in `values/istiod.yaml` match. |

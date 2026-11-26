@@ -16,7 +16,7 @@
 hosts = ["app.example.com"]
 
 # Your identity provider. See examples/ for where to find these values.
-oidc_issuer_url = "https://idp.example.com"
+oidc_issuer_url = "https://idp.example.com"   # or use `keycloak = {...}`, see examples/keycloak-in-cluster.tfvars.example
 oidc_client_id  = "your-client-id"
 # oidc_client_secret = "..."      # better: export TF_VAR_oidc_client_secret
 

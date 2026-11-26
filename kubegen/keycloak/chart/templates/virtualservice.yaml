@@ -1,0 +1,22 @@
+{{- if .Values.istio.enabled }}
+# Routes the Keycloak host on the Istio gateway to the Keycloak service.
+# Only the public port is routed; the management port stays inside the cluster.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: keycloak
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: keycloak
+spec:
+  hosts:
+    - {{ .Values.hostname | quote }}
+  gateways:
+    - {{ .Values.istio.gateway }}
+  http:
+    - route:
+        - destination:
+            host: keycloak.{{ .Release.Namespace }}.svc.cluster.local
+            port:
+              number: 8080
+{{- end }}

@@ -1,0 +1,7 @@
+apiVersion: v2
+name: keycloak
+description: Keycloak identity provider with PostgreSQL, a ready-made SSO realm, and an Istio route.
+type: application
+version: 0.1.0
+# Keycloak version this chart was written for (the image tag is in values.yaml).
+appVersion: "26.6"
