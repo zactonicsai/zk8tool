@@ -9,7 +9,7 @@
 #   terraform apply -var-file=staging.tfvars
 #
 # Every setting below is commented out and shows its current default, which
-# was generated from my-cluster.yaml. Uncomment a setting and change it to override the
+# was generated from podman/kind-podman.yaml. Uncomment a setting and change it to override the
 # default; settings you leave commented keep their default.
 
 # Cluster name.
@@ -58,3 +58,6 @@
 
 # File to write the kubeconfig to. null = merge into ~/.kube/config.
 # kubeconfig_path = null
+
+# How long kind waits for the control plane to be ready, e.g. 120s or 5m.
+# wait_timeout = "120s"
