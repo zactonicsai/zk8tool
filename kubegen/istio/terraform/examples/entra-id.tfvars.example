@@ -1,0 +1,23 @@
+# Microsoft Entra ID (formerly Azure AD).
+#
+# In the Azure portal: Microsoft Entra ID > App registrations > New registration
+#   - Redirect URI (type "Web"): https://app.example.com/oauth2/callback
+#   - Certificates & secrets > New client secret   -> oidc_client_secret
+#   - Overview > Application (client) ID           -> oidc_client_id
+#   - Overview > Directory (tenant) ID             -> goes in the issuer URL
+#
+# export TF_VAR_oidc_client_secret='<client secret value>'
+
+hosts = ["app.example.com"]
+
+oidc_issuer_url = "https://login.microsoftonline.com/<tenant-id>/v2.0"
+oidc_client_id  = "<application-client-id>"
+
+oidc_extra_args = {
+  # Entra ID does not always send an "email" claim. The sign-in name
+  # (user@yourcompany.com) is in preferred_username.
+  "oidc-email-claim" = "preferred_username"
+}
+
+# Limit sign-in to your company's accounts.
+allowed_email_domains = ["yourcompany.com"]

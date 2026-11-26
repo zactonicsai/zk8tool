@@ -219,8 +219,10 @@ $defs:
           Container engine that runs the kind nodes. podman makes the script
           set KIND_EXPERIMENTAL_PROVIDER=podman and check for podman instead
           of docker.
+          When omitted, kubegen uses Docker if a Docker daemon is running on
+          the machine where it runs, otherwise Podman if that is installed.
+          Set it to remove any doubt.
         enum: [docker, podman]
-        default: docker
       nodeImage:
         description: Node image; overrides kubernetesVersion. E.g. kindest/node:v1.33.1
         type: string

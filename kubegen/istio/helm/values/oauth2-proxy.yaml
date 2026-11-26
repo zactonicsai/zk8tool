@@ -1,0 +1,59 @@
+# Values for the "oauth2-proxy" chart. oauth2-proxy runs the sign-in: it
+# sends people to your identity provider, receives them back, and keeps
+# their session in an encrypted cookie. Installed fourth, as release
+# "oauth2-proxy" in namespace oauth2-proxy.
+#
+#   helm install oauth2-proxy oauth2-proxy/oauth2-proxy -n oauth2-proxy \
+#     -f values/oauth2-proxy.yaml
+#
+# Replace every CHANGE-ME value. Terraform and install.sh set them for you.
+
+config:
+  # Kubernetes secret holding the credentials, with the keys
+  #   client-id, client-secret, cookie-secret
+  # It is created by Terraform / install.sh so that no secret lives in a
+  # values file.
+  existingSecret: oauth2-proxy-credentials
+
+  configFile: |-
+    # Who may sign in, by e-mail domain. "*" = anyone your identity provider
+    # lets in. Example: [ "example.com", "example.org" ]
+    email_domains = [ "*" ]
+    # oauth2-proxy only answers the gateway's "is this signed in?" question;
+    # it does not proxy to an app itself. static://200 = answer "yes" (HTTP
+    # 200) for signed-in requests.
+    upstreams = [ "static://200" ]
+
+extraArgs:
+  # Any OpenID Connect identity provider (Entra ID, Okta, Google, Keycloak).
+  provider: oidc
+  oidc-issuer-url: https://CHANGE-ME
+
+  # Where the identity provider sends people after sign-in. Register exactly
+  # this URL as a redirect URI in the identity provider.
+  redirect-url: https://CHANGE-ME/oauth2/callback
+
+  scope: openid email profile
+
+  # Behind the Istio gateway: trust its X-Forwarded-* headers.
+  reverse-proxy: "true"
+
+  # Return who signed in as X-Auth-Request-* headers (see istiod.yaml).
+  set-xauthrequest: "true"
+
+  # Pass the ID token to your app as "Authorization: Bearer <token>".
+  set-authorization-header: "true"
+
+  # Go straight to the identity provider instead of showing oauth2-proxy's
+  # own "Sign in" button page first.
+  skip-provider-button: "true"
+
+  # Cookies only over HTTPS. Set to "false" only for local HTTP testing.
+  cookie-secure: "true"
+  cookie-samesite: lax
+
+service:
+  # The port the gateway calls; must match extensionProviders in istiod.yaml.
+  portNumber: 4180
+
+replicaCount: 2

@@ -1,0 +1,47 @@
+# Values for the "istiod" chart (the Istio control plane). Installed second,
+# into istio-system.
+#
+#   helm install istiod istio/istiod -n istio-system -f values/istiod.yaml
+
+meshConfig:
+  # Print one access log line per request in every proxy. Very useful while
+  # setting up sign-in; set to "" to turn it off.
+  accessLogFile: /dev/stdout
+
+  # Registers oauth2-proxy as an external authorizer. The AuthorizationPolicy
+  # in the sso-config chart refers to it by this name, and the Envoy proxy in
+  # the ingress gateway then asks oauth2-proxy "is this request signed in?"
+  # before letting it through.
+  extensionProviders:
+    - name: oauth2-proxy
+      envoyExtAuthzHttp:
+        # <service>.<namespace>.svc.cluster.local of the oauth2-proxy release.
+        # Must match the oauth2-proxy namespace and service.portNumber.
+        service: oauth2-proxy.oauth2-proxy.svc.cluster.local
+        port: 4180
+
+        # Request headers passed to oauth2-proxy for the check. The session
+        # lives in a cookie; "authorization" allows bearer tokens too.
+        includeRequestHeadersInCheck:
+          - authorization
+          - cookie
+
+        # Headers oauth2-proxy returns that are added to the request before it
+        # reaches your app, so the app knows who signed in.
+        headersToUpstreamOnAllow:
+          - authorization
+          - path
+          - x-auth-request-user
+          - x-auth-request-email
+          - x-auth-request-preferred-username
+          - x-auth-request-groups
+
+        # Lets oauth2-proxy refresh the session cookie on allowed requests.
+        headersToDownstreamOnAllow:
+          - set-cookie
+
+        # Sent back to the browser when the request is not signed in: the
+        # redirect to the identity provider and the cookies of the login flow.
+        headersToDownstreamOnDenied:
+          - content-type
+          - set-cookie

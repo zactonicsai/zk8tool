@@ -1,0 +1,8 @@
+# Values for the Istio "base" chart (custom resource definitions and
+# cluster-wide resources). Installed first, into istio-system.
+#
+#   helm install istio-base istio/base -n istio-system -f values/istio-base.yaml
+
+# Marks this installation as the default revision, so namespaces labelled
+# istio-injection=enabled are served by it.
+defaultRevision: default

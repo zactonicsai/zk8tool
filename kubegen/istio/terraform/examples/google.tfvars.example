@@ -1,0 +1,18 @@
+# Google (Google Workspace or personal Google accounts).
+#
+# In the Google Cloud console: APIs & Services > Credentials >
+# Create credentials > OAuth client ID
+#   - Application type: Web application
+#   - Authorised redirect URI: https://app.example.com/oauth2/callback
+#   - Client ID     -> oidc_client_id
+#   - Client secret -> oidc_client_secret
+#
+# export TF_VAR_oidc_client_secret='<client secret>'
+
+hosts = ["app.example.com"]
+
+oidc_issuer_url = "https://accounts.google.com"
+oidc_client_id  = "<client-id>.apps.googleusercontent.com"
+
+# Important: without this, ANY Google account can sign in.
+allowed_email_domains = ["yourcompany.com"]

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: sso-config
+description: Istio Gateway and sign-in policy that put SSO (via oauth2-proxy) in front of your apps.
+type: application
+version: 0.1.0
+appVersion: "1.0"

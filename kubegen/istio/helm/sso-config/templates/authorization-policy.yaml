@@ -1,0 +1,36 @@
+# Requires sign-in at the ingress gateway.
+#
+# action CUSTOM hands the decision to the extension provider (oauth2-proxy):
+#   - signed in      -> the request continues to your app, with
+#                       X-Auth-Request-* headers added
+#   - not signed in  -> the browser is redirected to the identity provider
+#
+# The /oauth2/* paths (callback, sign_out) are answered by oauth2-proxy as
+# part of the same check, so they need no route of their own.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: {{ .Values.gateway.name }}-sign-in
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    matchLabels:
+      {{- toYaml .Values.gateway.selector | nindent 6 }}
+  action: CUSTOM
+  provider:
+    name: {{ .Values.signIn.providerName }}
+  rules:
+    - to:
+        - operation:
+            # Each host with and without a port (browsers add the port when
+            # it is not 80/443).
+            hosts:
+              {{- range .Values.hosts }}
+              - {{ . | quote }}
+              - {{ printf "%s:*" . | quote }}
+              {{- end }}
+            {{- with .Values.signIn.publicPaths }}
+            # These paths skip sign-in.
+            notPaths:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}

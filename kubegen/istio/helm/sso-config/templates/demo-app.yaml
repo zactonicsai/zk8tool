@@ -1,0 +1,64 @@
+{{- if .Values.demoApp.enabled }}
+# Test app: httpbin echoes the request back, so you can see the headers the
+# gateway adds after sign-in. Remove it with demoApp.enabled=false.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.demoApp.namespace }}
+  labels:
+    # Give the pods in this namespace an Istio sidecar.
+    istio-injection: enabled
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: httpbin
+  namespace: {{ .Values.demoApp.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: httpbin
+  template:
+    metadata:
+      labels:
+        app: httpbin
+    spec:
+      containers:
+        - name: httpbin
+          image: {{ .Values.demoApp.image }}
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: httpbin
+  namespace: {{ .Values.demoApp.namespace }}
+spec:
+  selector:
+    app: httpbin
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8080
+---
+# Routes the hosts on the SSO gateway to the test app. Your own apps need a
+# VirtualService like this one, pointing at their own Service.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: httpbin
+  namespace: {{ .Values.demoApp.namespace }}
+spec:
+  hosts:
+    {{- toYaml .Values.hosts | nindent 4 }}
+  gateways:
+    - {{ .Release.Namespace }}/{{ .Values.gateway.name }}
+  http:
+    - route:
+        - destination:
+            host: httpbin.{{ .Values.demoApp.namespace }}.svc.cluster.local
+            port:
+              number: 8000
+{{- end }}

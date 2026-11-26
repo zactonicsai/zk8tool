@@ -1,0 +1,20 @@
+# Keycloak.
+#
+# In the Keycloak admin console, in your realm: Clients > Create client
+#   - Client type: OpenID Connect, Client authentication: On
+#   - Valid redirect URIs: https://app.example.com/oauth2/callback
+#   - Client ID                    -> oidc_client_id
+#   - Credentials > Client secret  -> oidc_client_secret
+#
+# export TF_VAR_oidc_client_secret='<client secret>'
+
+hosts = ["app.example.com"]
+
+oidc_issuer_url = "https://keycloak.example.com/realms/<realm>"
+oidc_client_id  = "<client-id>"
+
+# Keycloak users often have no verified e-mail. Uncomment if sign-in fails
+# with "email in id_token isn't verified".
+# oidc_extra_args = {
+#   "insecure-oidc-allow-unverified-email" = "true"
+# }

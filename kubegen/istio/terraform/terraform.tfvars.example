@@ -1,0 +1,63 @@
+# Settings for Istio with SSO sign-in.
+#
+# Copy this file to terraform.tfvars and fill it in:
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# Ready-made starting points for common identity providers and for a local
+# kind cluster are in examples/. Use one with:
+#   terraform apply -var-file=examples/okta.tfvars.example
+#
+# Keep the client secret out of files. Set it in the shell instead:
+#   export TF_VAR_oidc_client_secret='...'
+
+# --- Required -----------------------------------------------------------------
+
+# Host names that require sign-in. DNS for each must point at the gateway.
+hosts = ["app.example.com"]
+
+# Your identity provider. See examples/ for where to find these values.
+oidc_issuer_url = "https://idp.example.com"
+oidc_client_id  = "your-client-id"
+# oidc_client_secret = "..."      # better: export TF_VAR_oidc_client_secret
+
+# --- HTTPS ----------------------------------------------------------------------
+
+# Option A (default): the certificate secret already exists in istio-ingress,
+# for example created by cert-manager or with
+#   kubectl create secret tls sso-gateway-tls -n istio-ingress --cert=cert.pem --key=key.pem
+# tls_secret_name = "sso-gateway-tls"
+
+# Option B: let Terraform create the secret from certificate files.
+# tls_cert_file = "~/certs/app.example.com.crt"
+# tls_key_file  = "~/certs/app.example.com.key"
+
+# --- Who may sign in --------------------------------------------------------
+
+# Limit sign-in to your organisation's e-mail domains.
+# allowed_email_domains = ["example.com"]
+
+# Paths that stay public.
+# public_paths = ["/healthz", "/public/*"]
+
+# One sign-in for several sub-domains (all hosts must be under this domain).
+# hosts         = ["app.example.com", "admin.example.com"]
+# cookie_domain = ".example.com"
+
+# --- Cluster ------------------------------------------------------------------
+
+# kubeconfig_path    = "~/.kube/config"
+# kubeconfig_context = "prod-aks"
+
+# Internal load balancer instead of a public one (pick the line for your cloud).
+# gateway_service_annotations = { "service.beta.kubernetes.io/azure-load-balancer-internal" = "true" }
+# gateway_service_annotations = { "service.beta.kubernetes.io/aws-load-balancer-scheme" = "internal" }
+# gateway_service_annotations = { "networking.gke.io/load-balancer-type" = "Internal" }
+
+# --- Versions -----------------------------------------------------------------
+
+# Pin versions once the setup works, so a later apply cannot upgrade by surprise.
+# istio_version              = "1.31.0"
+# oauth2_proxy_chart_version = "<chart version>"   # list them: helm search repo oauth2-proxy --versions
+
+# Remove the httpbin test app when your own apps are behind the gateway.
+# deploy_demo_app = false

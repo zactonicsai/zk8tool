@@ -1,0 +1,26 @@
+# Values for the "gateway" chart (the Istio ingress gateway, an Envoy proxy
+# that receives traffic from outside the cluster). Installed third, as
+# release "istio-ingress" in namespace istio-ingress.
+#
+#   helm install istio-ingress istio/gateway -n istio-ingress -f values/gateway.yaml
+#
+# With that release name the gateway pods carry the label istio=ingress,
+# which the Gateway and AuthorizationPolicy in sso-config select on.
+
+service:
+  # LoadBalancer: the cloud gives the gateway a public address (AKS, EKS, GKE,
+  #               DigitalOcean).
+  # NodePort:     for local clusters such as kind, which have no load
+  #               balancer. See terraform/examples/local-kind.tfvars.example.
+  type: LoadBalancer
+
+  # Cloud-specific load balancer settings, for example an internal one:
+  #   service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+  #   networking.gke.io/load-balancer-type: "Internal"
+  annotations: {}
+
+# Run two gateway pods so a node failure does not take sign-in down.
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5

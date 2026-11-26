@@ -16,7 +16,12 @@ Set the runtime in the cluster definition:
 
     provider: kind
     kind:
-      runtime: podman      # default: docker
+      runtime: podman
+
+If you leave `runtime` out, kubegen picks for you: Docker when a Docker
+daemon is running on the machine, otherwise Podman when it is installed. It
+prints a note when it picks Podman. `podman/kubegen.sh` always defaults to
+Podman. Setting the line explicitly is still the safest choice.
 
 What changes:
 

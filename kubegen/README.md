@@ -49,6 +49,8 @@ Exit codes: 2 usage, 3 invalid cluster definition, 4 missing tools.
   scripts and Terraform generated from them.
 - `podman/` - kind on Podman instead of Docker, and running kubegen in a
   Podman container. See [podman/README.md](podman/README.md).
+- `istio/` - Istio with SSO sign-in at the ingress gateway, as Helm values
+  and Terraform. See [istio/README.md](istio/README.md).
 - `templates/` - the Terraform for each provider (embedded in the binary).
 - `terraform.go` - Terraform variables and file generation.
 - `validate.go` - the same rules enforced by the program.

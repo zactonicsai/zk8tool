@@ -1,0 +1,21 @@
+# Okta.
+#
+# In the Okta admin console: Applications > Create App Integration
+#   - Sign-in method: OIDC, application type: Web Application
+#   - Sign-in redirect URI:  https://app.example.com/oauth2/callback
+#   - Sign-out redirect URI: https://app.example.com
+#   - Client ID     -> oidc_client_id
+#   - Client secret -> oidc_client_secret
+#   - Assign the people or groups who may use the app.
+#
+# export TF_VAR_oidc_client_secret='<client secret>'
+
+hosts = ["app.example.com"]
+
+# Use your Okta domain. If you use a custom authorization server, the issuer
+# is https://<your-org>.okta.com/oauth2/default instead.
+oidc_issuer_url = "https://<your-org>.okta.com"
+oidc_client_id  = "<client-id>"
+
+# Ask Okta for group membership too (forwarded as X-Auth-Request-Groups).
+oidc_scopes = "openid email profile groups"

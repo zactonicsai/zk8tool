@@ -11,6 +11,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 KUBEGEN="${KUBEGEN:-./bin/kubegen}"
+
+# examples/kind.yaml does not set kind.runtime. Pin it to Docker here so the
+# example output is the same whatever is installed on this machine.
+export KUBEGEN_KIND_RUNTIME=docker
 if [ ! -x "$KUBEGEN" ]; then
   echo "error: $KUBEGEN not found; run ./build.sh first" >&2
   exit 1

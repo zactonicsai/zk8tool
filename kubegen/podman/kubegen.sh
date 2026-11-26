@@ -30,4 +30,9 @@ if [ -n "${KUBEGEN_REBUILD:-}" ] || ! podman image exists "$IMAGE"; then
 fi
 
 # :Z relabels the mount for SELinux hosts (Fedora, RHEL); harmless elsewhere.
-exec podman run --rm -v "$PWD":/work:Z -w /work "$IMAGE" -skip-tool-check "$@"
+# kubegen cannot see the host's container engines from inside the
+# container. You are running Podman, so kind definitions that do not set
+# kind.runtime default to Podman (override: KUBEGEN_KIND_RUNTIME=docker).
+exec podman run --rm -v "$PWD":/work:Z -w /work \
+  -e KUBEGEN_KIND_RUNTIME="${KUBEGEN_KIND_RUNTIME:-podman}" \
+  "$IMAGE" -skip-tool-check "$@"

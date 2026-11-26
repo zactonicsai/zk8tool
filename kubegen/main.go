@@ -40,6 +40,19 @@ func main() {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(exitInvalid)
 	}
+	// kind without an explicit runtime: use Podman when that is what this
+	// machine has, instead of generating Docker output that cannot work here.
+	if cfg.Provider == "kind" && (cfg.Kind == nil || cfg.Kind.Runtime == "") {
+		if cfg.Kind == nil {
+			cfg.Kind = &KindConfig{}
+		}
+		runtime, reason := detectKindRuntime()
+		cfg.Kind.Runtime = runtime
+		if runtime == "podman" {
+			fmt.Fprintf(os.Stderr, "note: generating for Podman (%s). Set kind.runtime in the definition to choose explicitly.\n", reason)
+		}
+	}
+
 	errs, warns := validate(cfg)
 	if len(errs) == 0 && *format == "terraform" {
 		tfErrs, tfWarns := validateTerraform(cfg)

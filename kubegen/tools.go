@@ -1,6 +1,9 @@
 package main
 
-import "os/exec"
+import (
+	"os"
+	"os/exec"
+)
 
 // Tool is a CLI the generated script depends on.
 type Tool struct {
@@ -52,6 +55,31 @@ func requiredTools(c *Config, format string) []Tool {
 		return tools
 	}
 	return nil
+}
+
+// detectKindRuntime picks the container engine for a kind cluster whose
+// definition does not set kind.runtime:
+//
+//  1. KUBEGEN_KIND_RUNTIME (docker or podman), if set;
+//  2. docker, if a Docker daemon answers;
+//  3. podman, if it is installed;
+//  4. docker otherwise.
+//
+// The second result explains a choice of podman, for the user.
+func detectKindRuntime() (runtime, reason string) {
+	switch env := os.Getenv("KUBEGEN_KIND_RUNTIME"); env {
+	case "docker":
+		return "docker", ""
+	case "podman":
+		return "podman", "KUBEGEN_KIND_RUNTIME=podman"
+	}
+	if exec.Command("docker", "info").Run() == nil {
+		return "docker", ""
+	}
+	if _, err := exec.LookPath("podman"); err == nil {
+		return "podman", "no running Docker was found on this machine, but Podman is installed"
+	}
+	return "docker", ""
 }
 
 // kindRuntimeTool is the container engine kind runs its nodes in.

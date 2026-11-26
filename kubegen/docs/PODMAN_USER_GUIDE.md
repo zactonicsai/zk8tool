@@ -228,7 +228,7 @@ it, add this to your shell profile:
 
 | Problem                                                        | What to do                                                                 |
 |----------------------------------------------------------------|----------------------------------------------------------------------------|
-| Terraform: `failed to get docker info: command "docker info ..." failed` | The Terraform was generated without `kind.runtime: podman`, so it uses the Docker-only kind provider. Add `runtime: podman` under `kind:` in the YAML, run kubegen again with `-format terraform`, then in the new directory run `terraform init` and `terraform apply`. |
+| Terraform: `failed to get docker info: command "docker info ..." failed` | You are applying Docker-based Terraform. Check with `grep -c tehcyx versions.tf` in the Terraform directory: 1 means Docker-based. Common causes: the directory came from `examples/kind.yaml` or `examples/output/terraform/kind` (both are Docker examples), it was generated before `runtime: podman` was added, or by an old kubegen. Fix: use `podman/kind-podman.yaml` or add `runtime: podman` under `kind:`, rebuild kubegen, generate into a new directory, and run `terraform init` and `terraform apply` there. |
 | `required tool 'podman' is not installed or not in PATH`       | Install Podman: <https://podman.io/docs/installation>                      |
 | `Podman is installed but not usable`                           | macOS/Windows: `podman machine start`. Linux: run `podman info` and fix the error it shows. |
 | Error about binding port 80 or 443, or "permission denied" on a port | Rootless Podman cannot use ports below 1024. Remove `ingressReady`, use high `hostPort` values. |

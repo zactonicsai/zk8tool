@@ -1,0 +1,42 @@
+# Values for the sso-config chart: the Istio resources that switch sign-in on.
+# Installed last, after Istio and oauth2-proxy.
+#
+#   helm install sso-config ./sso-config -n istio-ingress -f sso-config/values.yaml
+
+# Host names people use to reach your apps. Sign-in is required for all of
+# them. They must resolve (DNS) to the ingress gateway's address.
+hosts:
+  - app.example.com
+
+gateway:
+  # Name of the Istio Gateway resource. Your own VirtualServices attach to it
+  # as "<namespace>/<name>", e.g. istio-ingress/sso-gateway.
+  name: sso-gateway
+
+  # Labels of the ingress gateway pods (release "istio-ingress" -> istio=ingress).
+  selector:
+    istio: ingress
+
+  tls:
+    # true:  serve HTTPS on 443 and redirect HTTP to HTTPS (recommended;
+    #        sign-in cookies should only travel over HTTPS).
+    # false: plain HTTP on 80, for local testing only.
+    enabled: true
+    # kubernetes.io/tls secret in the gateway's namespace holding the
+    # certificate for the hosts above.
+    credentialName: sso-gateway-tls
+
+signIn:
+  # Name of the extension provider defined in values/istiod.yaml.
+  providerName: oauth2-proxy
+
+  # Paths that stay public (no sign-in), e.g. health checks or webhooks.
+  # A trailing * matches a prefix: "/public/*".
+  publicPaths: []
+
+# A small test app (httpbin) to prove sign-in works. Open https://<host>/headers
+# after signing in to see the X-Auth-Request-* headers your apps receive.
+demoApp:
+  enabled: true
+  namespace: sso-demo
+  image: docker.io/mccutchen/go-httpbin:v2.15.0

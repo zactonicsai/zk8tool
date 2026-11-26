@@ -258,6 +258,12 @@ Regenerate them with `./build.sh examples`.
 
 Details and rootless caveats: [podman/README.md](../podman/README.md).
 
+## Adding Istio with SSO sign-in
+
+Once a cluster is running, `istio/` installs Istio and requires sign-in
+through your identity provider for everything behind its ingress gateway.
+It is separate from kubegen: follow [istio/README.md](../istio/README.md).
+
 ## Differences between the two outputs
 
 - **AKS:** Terraform cannot taint the system (first) pool, and `aks.attachACR`

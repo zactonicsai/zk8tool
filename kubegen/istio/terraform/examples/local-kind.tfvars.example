@@ -1,0 +1,30 @@
+# Local test on a kind cluster, over plain HTTP. For trying things out only:
+# without HTTPS the session cookie is not protected.
+#
+# 1. Create the cluster from podman/kind-podman.yaml (or examples/kind.yaml
+#    with the same extraPortMappings). It maps
+#      localhost:8080 -> node port 30080
+#      localhost:8443 -> node port 30443
+# 2. In your identity provider, register the redirect URI
+#      http://localhost:8080/oauth2/callback
+#    (Most identity providers accept plain http only for "localhost".)
+# 3. export TF_VAR_oidc_client_secret='<client secret>'
+# 4. terraform apply -var-file=examples/local-kind.tfvars.example
+# 5. Open http://localhost:8080/headers
+
+hosts         = ["localhost"]
+tls_enabled   = false
+external_port = 8080
+
+oidc_issuer_url = "https://idp.example.com"
+oidc_client_id  = "your-client-id"
+
+# kind has no load balancer: expose the gateway on fixed node ports that the
+# cluster maps to localhost.
+gateway_service_type = "NodePort"
+gateway_node_ports = {
+  http  = 30080
+  https = 30443
+}
+
+# kubeconfig_context = "kind-dev-podman"
