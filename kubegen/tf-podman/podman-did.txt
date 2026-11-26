@@ -1,0 +1,16 @@
+
+./build.sh
+
+./bin/kubegen -f podman/kind-podman.yaml -format terraform -o tf-podman
+
+cd tf-podman
+
+terraform init
+
+terraform apply
+ 
+ 
+kubectl cluster-info
+
+
+kubectl cluster-info dump > podman-cluster.json
