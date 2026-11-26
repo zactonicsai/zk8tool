@@ -14,6 +14,7 @@ kubegen never creates anything itself. It writes files; you review and run them.
 | `eks`      | Amazon EKS                        | aws, eksctl, kubectl     | terraform, aws                       |
 | `vks`      | VMware vSphere Kubernetes Service | kubectl, kubectl-vsphere | terraform, kubectl, kubectl-vsphere  |
 | `dks`      | DigitalOcean Kubernetes           | doctl, kubectl           | terraform                            |
+| `gks`      | Google Kubernetes Engine (GKE)    | gcloud, kubectl, gke-gcloud-auth-plugin | terraform, gcloud     |
 
 ---
 
@@ -40,14 +41,14 @@ Start from the example for your platform:
 Every definition has the same outline:
 
     apiVersion: kubegen/v1
-    provider: aks              # kind | aks | eks | vks | dks
+    provider: aks              # kind | aks | eks | vks | dks | gks
     name: prod-aks
     kubernetesVersion: "1.33"  # always quote versions
-    region: eastus             # aks, eks, dks
+    region: eastus             # aks, eks, dks, gks
     tags: {env: prod}
     kubeconfig:
       path: ~/.kube/prod-aks.yaml
-    nodePools:                 # aks, eks, vks, dks
+    nodePools:                 # aks, eks, vks, dks, gks
       - name: system
         count: 3
         size: Standard_D4s_v5
@@ -68,6 +69,7 @@ What each platform needs:
 | `eks`    | `region`, `nodePools` (each with `size`)                                            |
 | `vks`    | `kubernetesVersion`, `nodePools`, `vks.namespace`, `vks.clusterClass`, `vks.vmClass`, `vks.storageClass` |
 | `dks`    | `region`, `nodePools` (each with `size`)                                            |
+| `gks`    | `region` (a region or a zone), `nodePools` (each with `size`), `gks.project`        |
 
 Node pools are fixed size (`count: 3`) or autoscaled
 (`autoscaling: {enabled: true, min: 2, max: 10}`).
@@ -171,6 +173,7 @@ Neither output logs in for you.
 | `eks`    | `aws configure` or `aws sso login` (set `eks.profile` for a named profile).           |
 | `vks`    | `kubectl vsphere login --server <supervisor> --vsphere-username <user>`. The shell script does this itself when `vks.login.method` is `kubectl-vsphere`; Terraform never does. |
 | `dks`    | Shell: `doctl auth init`. Terraform: `export DIGITALOCEAN_TOKEN=<token>`.             |
+| `gks`    | Shell: `gcloud auth login`. Terraform: `gcloud auth application-default login`. The Kubernetes Engine API must be enabled in the project. |
 
 ## Step 6 - Use the cluster
 
@@ -178,7 +181,8 @@ Neither output logs in for you.
 
 If you set `kubeconfig.path`, pass it: `kubectl --kubeconfig ~/.kube/prod-aks.yaml get nodes`.
 For EKS with Terraform, run the command shown by
-`terraform output update_kubeconfig_command` first.
+`terraform output update_kubeconfig_command` first; for GKE with Terraform,
+the one shown by `terraform output get_credentials_command`.
 
 ---
 
@@ -209,6 +213,8 @@ start and exit with code 127 if a tool is missing.
 | aws             | <https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html> |
 | eksctl          | <https://eksctl.io/installation/>                                             |
 | doctl           | <https://docs.digitalocean.com/reference/doctl/how-to/install/>               |
+| gcloud          | <https://cloud.google.com/sdk/docs/install>                                   |
+| gke-gcloud-auth-plugin | <https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl> (after installing gcloud: `gcloud components install gke-gcloud-auth-plugin`) |
 | terraform       | <https://developer.hashicorp.com/terraform/install>                           |
 | kubectl-vsphere | `https://<your-supervisor-address>/` (CLI tools page served by the Supervisor) |
 
@@ -265,6 +271,32 @@ Details and rootless caveats: [podman/README.md](../podman/README.md).
 - **DKS:** the first node pool is part of the cluster resource in Terraform;
   changing its name or size replaces the cluster.
 - **kind:** `kind.waitTimeout` only applies to the shell script.
+- **GKE:** both outputs create the cluster with a one-node `default-pool`
+  and then remove it, so that every pool has the name and settings from
+  your definition. `gks.deletionProtection` only affects Terraform.
+
+## Google Kubernetes Engine (`gks`) notes
+
+    provider: gks
+    region: us-central1          # region = regional cluster, zone = zonal cluster
+    nodePools:
+      - name: general
+        count: 1                 # per zone in a regional cluster
+        size: e2-standard-4
+    gks:
+      project: my-gcp-project
+
+- **Counts are per zone.** A regional cluster spreads each pool over the
+  region's zones (usually three), so `count: 1` gives three nodes and
+  `autoscaling: {min: 1, max: 4}` means 3 to 12. Set `region` to a zone such
+  as `us-central1-a`, or list `zones` on a pool, to limit this.
+- **`default-pool` is reserved** as a pool name.
+- **`tags` become Google labels:** lowercase letters, digits, `-` and `_`
+  only. kubegen rejects anything else.
+- **`gke-gcloud-auth-plugin`** is required for kubectl to log in to GKE.
+- **`privateNodes: true`** removes the nodes' public IPs; they need Cloud NAT
+  to pull images from the internet. kubegen does not create the NAT.
+- Full example: `examples/gks.yaml`.
 
 ## Troubleshooting
 
@@ -275,4 +307,6 @@ Details and rootless caveats: [podman/README.md](../podman/README.md).
 | `not logged in to Azure; run: az login`             | Log in (Step 5) and run the script again.                          |
 | `AKS pool names are 1-12 lowercase letters/digits`  | Rename the pool, e.g. `apps1` instead of `apps-1`.                 |
 | Terraform: `subscription_id is a required provider property` | Set `aks.subscription` or export `ARM_SUBSCRIPTION_ID`.   |
+| `not logged in to Google Cloud; run: gcloud auth login` | Log in, then run the script again. For Terraform use `gcloud auth application-default login`. |
+| GKE: far more nodes than expected | Counts are per zone in a regional cluster; see the GKE notes. |
 | VKS: cluster class, VM class or version not found   | Use the values from `kubectl get clusterclass -A`, `kubectl get vmclass`, `kubectl get kr`. |

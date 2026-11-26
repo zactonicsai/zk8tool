@@ -10,8 +10,10 @@ cluster with the provider's own CLI.
 | `eks`    | Amazon EKS                        | aws, eksctl, kubectl      |
 | `vks`    | VMware vSphere Kubernetes Service | kubectl, kubectl-vsphere  |
 | `dks`    | DigitalOcean Kubernetes           | doctl, kubectl            |
+| `gks`    | Google Kubernetes Engine (GKE)    | gcloud, kubectl, gke-gcloud-auth-plugin |
 
 Step-by-step instructions: [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+Podman-only walkthrough: [docs/PODMAN_USER_GUIDE.md](docs/PODMAN_USER_GUIDE.md).
 
 ## Build
 
@@ -56,10 +58,13 @@ Exit codes: 2 usage, 3 invalid cluster definition, 4 missing tools.
 ## Notes
 
 - Authentication is not handled: log in first (`az login`, `aws configure`,
-  `doctl auth init`). The script checks and stops with a hint if you are not.
+  `doctl auth init`, `gcloud auth login`). The script checks and stops with a hint if you are not.
 - vks: the script applies a Cluster API `Cluster` manifest to your vSphere
   Namespace. `clusterClass`, `vmClass`, `storageClass` and
   `kubernetesVersion` must match what your Supervisor offers
   (`kubectl get clusterclass -A`, `kubectl get vmclass`, `kubectl get kr`).
+- gks: in a regional cluster (`region: us-central1`) node counts and
+  autoscaling limits are per zone, so `count: 1` in three zones is three
+  nodes. Use a zone (`us-central1-a`) for a single-zone cluster.
 - eks: autoscaling sets node group min/max only; install Cluster Autoscaler
   or Karpenter to act on them.

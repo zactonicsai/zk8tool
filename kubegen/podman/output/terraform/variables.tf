@@ -88,3 +88,9 @@ variable "kubeconfig_path" {
   type        = string
   default     = null
 }
+
+variable "wait_timeout" {
+  description = "How long kind waits for the control plane to be ready, e.g. 120s or 5m."
+  type        = string
+  default     = "120s"
+}

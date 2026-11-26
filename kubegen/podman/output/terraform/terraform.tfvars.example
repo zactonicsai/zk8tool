@@ -58,3 +58,6 @@
 
 # File to write the kubeconfig to. null = merge into ~/.kube/config.
 # kubeconfig_path = null
+
+# How long kind waits for the control plane to be ready, e.g. 120s or 5m.
+# wait_timeout = "120s"

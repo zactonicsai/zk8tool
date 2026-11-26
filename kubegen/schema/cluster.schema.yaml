@@ -1,7 +1,7 @@
 # kubegen cluster definition schema (JSON Schema draft 2020-12, written in YAML).
 #
 # One file describes one cluster. `provider` selects the target platform and
-# the matching provider block (kind / aks / eks / vks / dks) carries the
+# the matching provider block (kind / aks / eks / vks / dks / gks) carries the
 # platform-specific settings. Blocks for other providers may stay in the file;
 # they are ignored.
 #
@@ -27,6 +27,7 @@ properties:
       - eks    # Amazon Elastic Kubernetes Service
       - vks    # VMware vSphere Kubernetes Service
       - dks    # DigitalOcean Kubernetes
+      - gks    # Google Kubernetes Engine (GKE)
 
   name:
     description: Cluster name (lowercase DNS label).
@@ -42,11 +43,15 @@ properties:
         eks:  "1.33"                        (omit for the eksctl default)
         vks:  full release name from `kubectl get kr`, e.g. "v1.33.1+vmware.1-fips" (required)
         dks:  doctl version slug, e.g. "1.33.1-do.0", or "latest" (default)
+        gks:  "1.33" or a full GKE version   (omit to use the release channel default)
     type: string
     minLength: 1
 
   region:
-    description: Cloud region / location (aks, eks, dks). E.g. eastus, us-east-1, nyc3.
+    description: |
+      Cloud region / location (aks, eks, dks, gks). E.g. eastus, us-east-1, nyc3.
+      gks: a region (us-central1) makes a regional cluster with nodes in
+      several zones; a zone (us-central1-a) makes a zonal cluster.
     type: string
     minLength: 1
 
@@ -54,6 +59,7 @@ properties:
     description: |
       Key/value tags applied to the cluster. aks/eks: resource tags,
       vks: labels on the Cluster object, dks: "key:value" tags, kind: ignored.
+      gks: cluster labels (lowercase letters, digits, "-" and "_" only).
     type: object
     additionalProperties: {type: string}
 
@@ -70,7 +76,7 @@ properties:
 
   nodePools:
     description: |
-      Worker node pools (aks, eks, vks, dks). The first pool is the AKS system
+      Worker node pools (aks, eks, vks, dks, gks). The first pool is the AKS system
       pool. Ignored by kind, which uses kind.controlPlaneNodes/workerNodes.
     type: array
     items: {$ref: '#/$defs/nodePool'}
@@ -80,6 +86,7 @@ properties:
   eks: {$ref: '#/$defs/eks'}
   vks: {$ref: '#/$defs/vks'}
   dks: {$ref: '#/$defs/dks'}
+  gks: {$ref: '#/$defs/gks'}
 
 # Per-provider requirements.
 allOf:
@@ -116,6 +123,16 @@ allOf:
           items:
             required: [size]
             properties: {diskSizeGB: false, zones: false, spot: false}
+  - if: {properties: {provider: {const: gks}}, required: [provider]}
+    then:
+      required: [region, nodePools, gks]
+      properties:
+        nodePools:
+          minItems: 1
+          items:
+            required: [size]
+            properties:
+              name: {maxLength: 40, not: {const: default-pool}}
 
 $defs:
   duration:
@@ -137,13 +154,18 @@ $defs:
         pattern: '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'
         maxLength: 63
       count:
-        description: Number of nodes. With autoscaling enabled, the initial count (default autoscaling.min).
+        description: |
+          Number of nodes. With autoscaling enabled, the initial count
+          (default autoscaling.min). gks regional clusters: nodes PER ZONE,
+          so 2 in a three-zone region means 6 nodes; autoscaling min/max are
+          per zone as well.
         type: integer
         minimum: 0
       size:
         description: |
           Machine size. aks: VM size (Standard_D4s_v5), eks: instance type
-          (m6i.large), dks: droplet slug (s-4vcpu-8gb), vks: VM class
+          (m6i.large), dks: droplet slug (s-4vcpu-8gb), gks: machine type
+          (e2-standard-4), vks: VM class
           (best-effort-large; defaults to vks.vmClass).
         type: string
         minLength: 1
@@ -165,15 +187,15 @@ $defs:
           Karpenter separately). vks: sets Cluster Autoscaler annotations
           (the autoscaler package must be installed on the cluster).
       zones:
-        description: Availability zones (aks e.g. ["1","2","3"]; eks e.g. [us-east-1a]).
+        description: 'Availability zones (aks e.g. ["1","2","3"]; eks e.g. [us-east-1a]; gks e.g. [us-central1-a]).'
         type: array
         items: {type: string}
       labels:
-        description: Kubernetes node labels (aks, eks, dks).
+        description: Kubernetes node labels (aks, eks, dks, gks).
         type: object
         additionalProperties: {type: string}
       taints:
-        description: Kubernetes node taints (aks, eks, dks).
+        description: Kubernetes node taints (aks, eks, dks, gks).
         type: array
         items:
           type: object
@@ -323,3 +345,28 @@ $defs:
       surgeUpgrade: {type: boolean}
       vpcUUID: {type: string}
       maintenanceWindow: {type: string, description: 'E.g. "saturday=02:00" or "any=00:00".'}
+
+  gks:
+    description: Settings for provider "gks" (Google Kubernetes Engine). Tools - gcloud, kubectl, gke-gcloud-auth-plugin.
+    type: object
+    additionalProperties: false
+    required: [project]
+    properties:
+      project: {type: string, minLength: 1, description: Google Cloud project ID.}
+      releaseChannel:
+        description: Automatic upgrade channel. Omit for the GKE default (regular).
+        enum: [rapid, regular, stable, none]
+      network: {type: string, description: VPC network name (default - the project's "default" network).}
+      subnetwork: {type: string, description: Subnetwork name.}
+      podCidr: {$ref: '#/$defs/cidr'}
+      serviceCidr: {$ref: '#/$defs/cidr'}
+      privateNodes: {type: boolean, description: Nodes get private IPs only and need Cloud NAT for internet access.}
+      masterCidr:
+        $ref: '#/$defs/cidr'
+        description: A /28 range for the control plane; only with privateNodes.
+      workloadIdentity: {type: boolean, description: Enable Workload Identity (pool <project>.svc.id.goog).}
+      dataplaneV2: {type: boolean, description: Use Dataplane V2 networking.}
+      deletionProtection:
+        description: Terraform only - refuse to destroy the cluster while true.
+        type: boolean
+        default: false

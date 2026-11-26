@@ -1,0 +1,109 @@
+# Example variable overrides for the gks cluster "prod-gke".
+#
+# Copy this file to terraform.tfvars (loaded automatically), or to a file per
+# environment and pass it with -var-file:
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#   terraform apply
+#
+#   terraform apply -var-file=staging.tfvars
+#
+# Every setting below is commented out and shows its current default, which
+# was generated from examples/gks.yaml. Uncomment a setting and change it to override the
+# default; settings you leave commented keep their default.
+
+# Cluster name.
+# name = "prod-gke"
+
+# Google Cloud project ID.
+# project = "my-gcp-project"
+
+# A region (us-central1) for a regional cluster, or a zone (us-central1-a) for a zonal one.
+# Regional clusters put nodes in several zones, so node_count is per zone.
+# location = "us-central1"
+
+# Minimum Kubernetes version, e.g. "1.33". null = the release channel's default.
+# kubernetes_version = "1.33"
+
+# Automatic upgrade channel: rapid, regular, stable or none. null = GKE default.
+# release_channel = "regular"
+
+# Labels applied to the cluster (lowercase letters, digits, '-' and '_').
+# labels = {
+#   env  = "prod"
+#   team = "platform"
+# }
+
+# VPC network name. null = the project's default network.
+# network = null
+
+# Subnetwork name. null = chosen by GKE.
+# subnetwork = null
+
+# Pod IP range. null = chosen by GKE.
+# pod_cidr = null
+
+# Service IP range. null = chosen by GKE.
+# service_cidr = null
+
+# Give nodes private IP addresses only (they then need Cloud NAT to reach the internet).
+# private_nodes = false
+
+# A /28 range for the control plane of a private cluster. null = chosen by GKE.
+# master_cidr = null
+
+# Enable Workload Identity so pods can use Google service accounts.
+# workload_identity = true
+
+# Use Dataplane V2 (Cilium-based networking with built-in network policy).
+# dataplane_v2 = true
+
+# Block terraform destroy from deleting the cluster.
+# Set to true for clusters you must not lose; set back to false and apply before destroying.
+# deletion_protection = false
+
+# Node pools, keyed by pool name. Counts are per zone in a regional cluster.
+# Fixed size: set node_count. Autoscaled: set autoscaling = { min = 1, max = 5 } instead.
+# To add a pool, add an entry:
+#   highmem = {
+#     machine_type = "e2-highmem-4"
+#     node_count   = 1
+#     labels       = { workload = "memory" }
+#   }
+#
+# node_pools = {
+#   general = {
+#     machine_type = "e2-standard-4"
+#     node_count   = 1
+#     disk_size_gb = 100
+#   }
+#   apps    = {
+#     machine_type = "e2-standard-8"
+#     autoscaling  = {
+#       min = 1
+#       max = 4
+#     }
+#     labels       = {
+#       workload = "apps"
+#     }
+#   }
+#   batch   = {
+#     machine_type = "e2-standard-8"
+#     autoscaling  = {
+#       min = 0
+#       max = 10
+#     }
+#     zones        = ["us-central1-a", "us-central1-b"]
+#     taints       = [
+#       {
+#         key    = "workload"
+#         value  = "batch"
+#         effect = "NoSchedule"
+#       },
+#     ]
+#     spot         = true
+#   }
+# }
+
+# Kubeconfig file used in the get_credentials_command output. null = default.
+# kubeconfig_path = null

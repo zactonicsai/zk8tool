@@ -186,6 +186,8 @@ func generate(c *Config, source string, tools []Tool) string {
 		genVKS(s, c)
 	case "dks":
 		genDKS(s, c)
+	case "gks":
+		genGKS(s, c)
 	}
 
 	if verify {
@@ -679,5 +681,84 @@ func genDKS(s *script, c *Config) {
 		s.step("Fetching credentials")
 		s.line(`(umask 077; %s > "$KUBECONFIG_OUT")`,
 			strings.Join(mapQ(append([]string{"doctl", "kubernetes", "cluster", "kubeconfig", "show", c.Name}, ctx...)), " "))
+	}
+}
+
+func genGKS(s *script, c *Config) {
+	g := c.GKS
+	// --location takes a region (regional cluster) or a zone (zonal cluster).
+	where := []string{"--project", g.Project, "--location", c.Region}
+
+	var channel []string
+	if g.ReleaseChannel != "" {
+		channel = []string{"--release-channel", g.ReleaseChannel}
+	}
+	var workloadPool []string
+	if g.WorkloadIdentity {
+		workloadPool = []string{"--workload-pool", g.Project + ".svc.id.goog"}
+	}
+
+	s.step("Checking Google Cloud login")
+	s.line(`gcloud auth print-access-token >/dev/null 2>&1 || die "not logged in to Google Cloud; run: gcloud auth login"`)
+
+	// GKE always creates a pool called default-pool with the cluster. It is
+	// created small here and removed once the pools from the definition exist,
+	// so every pool has the name and settings you asked for.
+	s.step("Creating GKE cluster " + c.Name + " (this takes several minutes)")
+	s.cmd(
+		[]string{"gcloud", "container", "clusters", "create", c.Name},
+		where,
+		opt("--cluster-version", c.KubernetesVersion),
+		channel,
+		[]string{"--num-nodes", "1"},
+		opt("--network", g.Network),
+		opt("--subnetwork", g.Subnetwork),
+		[]string{"--enable-ip-alias"},
+		opt("--cluster-ipv4-cidr", g.PodCIDR),
+		opt("--services-ipv4-cidr", g.ServiceCIDR),
+		flagIf("--enable-private-nodes", g.PrivateNodes),
+		opt("--master-ipv4-cidr", g.MasterCIDR),
+		workloadPool,
+		flagIf("--enable-dataplane-v2", g.DataplaneV2),
+		opt("--labels", strings.Join(kvList(c.Tags), ",")),
+		[]string{"--quiet"},
+	)
+
+	for _, p := range c.NodePools {
+		var autoscale []string
+		if p.autoscaled() {
+			autoscale = []string{"--enable-autoscaling",
+				"--min-nodes", strconv.Itoa(p.Autoscaling.Min), "--max-nodes", strconv.Itoa(p.Autoscaling.Max)}
+		}
+		var disk []string
+		if p.DiskSizeGB != 0 {
+			disk = []string{"--disk-size", strconv.Itoa(p.DiskSizeGB)}
+		}
+		s.step("Adding node pool " + p.Name)
+		s.cmd(
+			[]string{"gcloud", "container", "node-pools", "create", p.Name, "--cluster", c.Name},
+			where,
+			// In a regional cluster this is the number of nodes in EACH zone.
+			[]string{"--machine-type", p.Size, "--num-nodes", strconv.Itoa(p.initialCount())},
+			disk,
+			autoscale,
+			opt("--node-locations", strings.Join(p.Zones, ",")),
+			opt("--node-labels", strings.Join(kvList(p.Labels), ",")),
+			opt("--node-taints", strings.Join(taintStrings(p.Taints), ",")),
+			flagIf("--spot", p.Spot),
+			[]string{"--quiet"},
+		)
+	}
+
+	s.step("Removing the temporary default-pool")
+	s.cmd([]string{"gcloud", "container", "node-pools", "delete", "default-pool", "--cluster", c.Name}, where, []string{"--quiet"})
+
+	s.step("Fetching credentials")
+	get := strings.Join(mapQ(append([]string{"gcloud", "container", "clusters", "get-credentials", c.Name}, where...)), " ")
+	if c.Kubeconfig.Path != "" {
+		// gcloud writes to the file named by KUBECONFIG.
+		s.line(`KUBECONFIG="$KUBECONFIG_OUT" %s`, get)
+	} else {
+		s.line("%s", get)
 	}
 }

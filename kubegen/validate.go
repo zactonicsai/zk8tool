@@ -7,10 +7,12 @@ import (
 )
 
 var (
-	nameRe     = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
-	aksPoolRe  = regexp.MustCompile(`^[a-z][a-z0-9]{0,11}$`)
-	durationRe = regexp.MustCompile(`^[0-9]+[smh]$`)
-	patchVerRe = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+$`)
+	nameRe          = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
+	aksPoolRe       = regexp.MustCompile(`^[a-z][a-z0-9]{0,11}$`)
+	durationRe      = regexp.MustCompile(`^[0-9]+[smh]$`)
+	gcpLabelKeyRe   = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,62}$`)
+	gcpLabelValueRe = regexp.MustCompile(`^[a-z0-9_-]{0,63}$`)
+	patchVerRe      = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+$`)
 )
 
 // validate checks the config against the rules in schema/cluster.schema.yaml
@@ -225,8 +227,38 @@ func validate(c *Config) (errs, warns []string) {
 			c.DKS = &DKSConfig{}
 		}
 
+	case "gks":
+		needRegion()
+		checkPools(true)
+		g := c.GKS
+		if g == nil || g.Project == "" {
+			bad("gks.project: required (your Google Cloud project ID)")
+			break
+		}
+		switch g.ReleaseChannel {
+		case "", "rapid", "regular", "stable", "none":
+		default:
+			bad("gks.releaseChannel: must be rapid, regular, stable or none")
+		}
+		if g.MasterCIDR != "" && !g.PrivateNodes {
+			bad("gks.masterCidr: only used together with gks.privateNodes")
+		}
+		for i, p := range c.NodePools {
+			if p.Name == "default-pool" {
+				bad("nodePools[%d]: \"default-pool\" is reserved by GKE; choose another name", i)
+			}
+			if len(p.Name) > 40 {
+				bad("nodePools[%d] (%s): GKE pool names are at most 40 characters", i, p.Name)
+			}
+		}
+		for k, v := range c.Tags {
+			if !gcpLabelKeyRe.MatchString(k) || !gcpLabelValueRe.MatchString(v) {
+				bad("tags: %q=%q is not a valid Google Cloud label (lowercase letters, digits, '-' and '_'; keys start with a letter)", k, v)
+			}
+		}
+
 	default:
-		bad("provider: %q must be one of kind, aks, eks, vks, dks", c.Provider)
+		bad("provider: %q must be one of kind, aks, eks, vks, dks, gks", c.Provider)
 	}
 	return errs, warns
 }

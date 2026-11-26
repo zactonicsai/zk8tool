@@ -21,7 +21,7 @@ What you end up with:
 | kind      | creates the cluster                | <https://kind.sigs.k8s.io/docs/user/quick-start/#installation> |
 | kubectl   | talks to the cluster               | <https://kubernetes.io/docs/tasks/tools/>                      |
 | go 1.22+  | building kubegen (optional, Step 3)| <https://go.dev/dl/>                                           |
-| terraform | Terraform output only (Step 7)     | <https://developer.hashicorp.com/terraform/install>            |
+| terraform | Terraform output only (Step 7; also needs kind) | <https://developer.hashicorp.com/terraform/install>            |
 
 Check them:
 
@@ -172,9 +172,19 @@ the node image is downloaded.
     ./bin/kubegen -f my-cluster.yaml -format terraform
     cd terraform-dev-podman
 
-    export KIND_EXPERIMENTAL_PROVIDER=podman      # required: do this before terraform
     terraform init
     terraform apply
+
+`kind.runtime: podman` must be set in the YAML when you generate. kubegen
+then writes a Podman-specific configuration: instead of the community kind
+provider (which only talks to Docker), it runs the `kind` command with
+Podman selected. That means:
+
+- `kind` must be installed for Terraform too, not only for the shell script.
+- You do not set `KIND_EXPERIMENTAL_PROVIDER` yourself.
+- It needs a POSIX shell (Linux, macOS, or WSL / Git Bash on Windows).
+- Changing a setting and running `terraform apply` again deletes the cluster
+  and creates a new one, because kind cannot modify a running cluster.
 
 To change settings without editing the YAML, copy
 `terraform.tfvars.example` to `terraform.tfvars` and uncomment what you want
@@ -185,7 +195,7 @@ to override, for example:
       { container_port = 30080, host_port = 8080 },
     ]
 
-Remove the cluster with `terraform destroy` (same environment variable set).
+Remove the cluster with `terraform destroy`.
 A ready-made example is in `podman/output/terraform/`.
 
 ## Step 8 - Use the cluster
@@ -218,6 +228,7 @@ it, add this to your shell profile:
 
 | Problem                                                        | What to do                                                                 |
 |----------------------------------------------------------------|----------------------------------------------------------------------------|
+| Terraform: `failed to get docker info: command "docker info ..." failed` | The Terraform was generated without `kind.runtime: podman`, so it uses the Docker-only kind provider. Add `runtime: podman` under `kind:` in the YAML, run kubegen again with `-format terraform`, then in the new directory run `terraform init` and `terraform apply`. |
 | `required tool 'podman' is not installed or not in PATH`       | Install Podman: <https://podman.io/docs/installation>                      |
 | `Podman is installed but not usable`                           | macOS/Windows: `podman machine start`. Linux: run `podman info` and fix the error it shows. |
 | Error about binding port 80 or 443, or "permission denied" on a port | Rootless Podman cannot use ports below 1024. Remove `ingressReady`, use high `hostPort` values. |

@@ -105,6 +105,25 @@ wrote examples/output/terraform/dks/variables.tf
 wrote examples/output/terraform/dks/versions.tf
 next: cd examples/output/terraform/dks && terraform init && terraform plan
 
+$ ./bin/kubegen -f examples/gks.yaml -o examples/output/shell/create-prod-gke.sh -skip-tool-check
+warning: 2 tool(s) required for provider "gks" (shell) are not installed or not in PATH:
+  - kubectl (talks to the cluster)
+      install it from: https://kubernetes.io/docs/tasks/tools/
+  - gke-gcloud-auth-plugin (lets kubectl log in to GKE; after installing gcloud run: gcloud components install gke-gcloud-auth-plugin)
+      install it from: https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl
+wrote examples/output/shell/create-prod-gke.sh - run it with: bash examples/output/shell/create-prod-gke.sh
+
+$ ./bin/kubegen -f examples/gks.yaml -format terraform -o examples/output/terraform/gks -skip-tool-check
+warning: 1 tool(s) required for provider "gks" (terraform) are not installed or not in PATH:
+  - terraform (applies the generated Terraform configuration)
+      install it from: https://developer.hashicorp.com/terraform/install
+wrote examples/output/terraform/gks/main.tf
+wrote examples/output/terraform/gks/outputs.tf
+wrote examples/output/terraform/gks/terraform.tfvars.example
+wrote examples/output/terraform/gks/variables.tf
+wrote examples/output/terraform/gks/versions.tf
+next: cd examples/output/terraform/gks && terraform init && terraform plan
+
 $ ./bin/kubegen -f podman/kind-podman.yaml -o podman/output/create-dev-podman.sh -skip-tool-check
 warning: 3 tool(s) required for provider "kind" (shell) are not installed or not in PATH:
   - podman (runs the kind nodes)
@@ -116,12 +135,13 @@ warning: 3 tool(s) required for provider "kind" (shell) are not installed or not
 wrote podman/output/create-dev-podman.sh - run it with: bash podman/output/create-dev-podman.sh
 
 $ ./bin/kubegen -f podman/kind-podman.yaml -format terraform -o podman/output/terraform -skip-tool-check
-warning: kind.runtime podman: run `export KIND_EXPERIMENTAL_PROVIDER=podman` before terraform apply so the kind provider uses Podman
-warning: 2 tool(s) required for provider "kind" (terraform) are not installed or not in PATH:
+warning: 3 tool(s) required for provider "kind" (terraform) are not installed or not in PATH:
   - terraform (applies the generated Terraform configuration)
       install it from: https://developer.hashicorp.com/terraform/install
   - podman (runs the kind nodes)
       install it from: https://podman.io/docs/installation
+  - kind (creates the local cluster)
+      install it from: https://kind.sigs.k8s.io/docs/user/quick-start/#installation
 wrote podman/output/terraform/main.tf
 wrote podman/output/terraform/outputs.tf
 wrote podman/output/terraform/terraform.tfvars.example

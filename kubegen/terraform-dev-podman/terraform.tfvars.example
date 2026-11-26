@@ -1,4 +1,4 @@
-# Example variable overrides for the kind cluster "dev-local".
+# Example variable overrides for the kind cluster "dev-podman".
 #
 # Copy this file to terraform.tfvars (loaded automatically), or to a file per
 # environment and pass it with -var-file:
@@ -9,11 +9,11 @@
 #   terraform apply -var-file=staging.tfvars
 #
 # Every setting below is commented out and shows its current default, which
-# was generated from examples/kind.yaml. Uncomment a setting and change it to override the
+# was generated from my-cluster.yaml. Uncomment a setting and change it to override the
 # default; settings you leave commented keep their default.
 
 # Cluster name.
-# name = "dev-local"
+# name = "dev-podman"
 
 # Node image, which sets the Kubernetes version. null = the provider's default.
 # Image tags are listed in the kind release notes, e.g. "kindest/node:v1.33.1".
@@ -26,7 +26,7 @@
 # worker_nodes = 2
 
 # Label the first control-plane node ingress-ready=true and publish host ports 80 and 443.
-# ingress_ready = true
+# ingress_ready = false
 
 # Extra host ports published on the first control-plane node.
 # Example: [{ container_port = 30080, host_port = 8080 }] exposes NodePort 30080 on localhost:8080.
@@ -34,6 +34,10 @@
 #   {
 #     container_port = 30080
 #     host_port      = 8080
+#   },
+#   {
+#     container_port = 30443
+#     host_port      = 8443
 #   },
 # ]
 
@@ -44,10 +48,10 @@
 # api_server_port = null
 
 # Pod network CIDR. null = kind default.
-# pod_subnet = "10.244.0.0/16"
+# pod_subnet = null
 
 # Service network CIDR. null = kind default.
-# service_subnet = "10.96.0.0/12"
+# service_subnet = null
 
 # Skip kindnet so another CNI (Cilium, Calico, ...) can be installed.
 # disable_default_cni = false

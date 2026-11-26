@@ -1,0 +1,157 @@
+# Google Kubernetes Engine (GKE) cluster with separately managed node pools.
+#
+# Authentication: Terraform uses Application Default Credentials. Run
+#   gcloud auth application-default login
+# first (or set GOOGLE_APPLICATION_CREDENTIALS to a service account key).
+#
+# Usage:
+#   terraform init
+#   terraform plan
+#   terraform apply
+#
+# Override settings in terraform.tfvars (see terraform.tfvars.example).
+
+provider "google" {
+  project = var.project
+}
+
+locals {
+  # GKE API spelling of the release channel names.
+  release_channels = {
+    rapid   = "RAPID"
+    regular = "REGULAR"
+    stable  = "STABLE"
+    none    = "UNSPECIFIED"
+  }
+
+  # Kubernetes taint effect -> GKE API spelling.
+  taint_effects = {
+    NoSchedule       = "NO_SCHEDULE"
+    PreferNoSchedule = "PREFER_NO_SCHEDULE"
+    NoExecute        = "NO_EXECUTE"
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Cluster (control plane)
+# ---------------------------------------------------------------------------
+
+resource "google_container_cluster" "this" {
+  name     = var.name
+  project  = var.project
+  location = var.location # region = regional cluster, zone = zonal cluster
+
+  # GKE insists on creating a default node pool with the cluster. It is
+  # created with one node and removed straight away; the real pools are the
+  # google_container_node_pool resources below, which can then be changed
+  # without touching the cluster.
+  remove_default_node_pool = true
+  initial_node_count       = 1
+
+  min_master_version = var.kubernetes_version # null = release channel default
+
+  dynamic "release_channel" {
+    for_each = var.release_channel == null ? [] : [var.release_channel]
+    content {
+      channel = local.release_channels[release_channel.value]
+    }
+  }
+
+  network    = var.network
+  subnetwork = var.subnetwork
+
+  # VPC-native networking: pods and services get their own IP ranges.
+  # null = GKE picks the ranges.
+  ip_allocation_policy {
+    cluster_ipv4_cidr_block  = var.pod_cidr
+    services_ipv4_cidr_block = var.service_cidr
+  }
+
+  # Private nodes have no public IP. The API server keeps its public
+  # endpoint so you can still run kubectl from outside the network.
+  dynamic "private_cluster_config" {
+    for_each = var.private_nodes ? [1] : []
+    content {
+      enable_private_nodes    = true
+      enable_private_endpoint = false
+      master_ipv4_cidr_block  = var.master_cidr
+    }
+  }
+
+  # Workload Identity lets pods act as Google service accounts without keys.
+  dynamic "workload_identity_config" {
+    for_each = var.workload_identity ? [1] : []
+    content {
+      workload_pool = "${var.project}.svc.id.goog"
+    }
+  }
+
+  # Dataplane V2 = Cilium-based networking with network policy built in.
+  datapath_provider = var.dataplane_v2 ? "ADVANCED_DATAPATH" : null
+
+  resource_labels = var.labels
+
+  # While true, terraform destroy refuses to delete the cluster.
+  deletion_protection = var.deletion_protection
+}
+
+# ---------------------------------------------------------------------------
+# Node pools: one per entry in var.node_pools.
+# Add, remove or resize pools by editing that map in terraform.tfvars.
+# ---------------------------------------------------------------------------
+
+resource "google_container_node_pool" "this" {
+  for_each = var.node_pools
+
+  name     = each.key
+  project  = var.project
+  location = var.location
+  cluster  = google_container_cluster.this.name
+
+  # In a regional cluster these numbers are PER ZONE: node_count = 2 in a
+  # three-zone region gives six nodes.
+  # Fixed size: node_count. Autoscaled: the pool starts at min and the
+  # autoscaler owns the count afterwards.
+  node_count = each.value.autoscaling == null ? each.value.node_count : null
+
+  dynamic "autoscaling" {
+    for_each = each.value.autoscaling == null ? [] : [each.value.autoscaling]
+    content {
+      min_node_count = autoscaling.value.min
+      max_node_count = autoscaling.value.max
+    }
+  }
+
+  # null = every zone of the cluster's location.
+  node_locations = each.value.zones
+
+  node_config {
+    machine_type = each.value.machine_type
+    disk_size_gb = each.value.disk_size_gb # null = GKE default (100 GB)
+    labels       = each.value.labels
+
+    # Spot VMs are much cheaper but can be taken back at any time.
+    spot = each.value.spot
+
+    # Broad API scope; what the nodes may actually do is limited by the
+    # IAM roles of their service account.
+    oauth_scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+
+    dynamic "taint" {
+      for_each = each.value.taints
+      content {
+        key    = taint.value.key
+        value  = taint.value.value
+        effect = local.taint_effects[taint.value.effect]
+      }
+    }
+
+    # Needed on the nodes for Workload Identity to work.
+    dynamic "workload_metadata_config" {
+      for_each = var.workload_identity ? [1] : []
+      content {
+        mode = "GKE_METADATA"
+      }
+    }
+  }
+}

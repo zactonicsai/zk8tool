@@ -187,7 +187,7 @@ func kindVars(c *Config) []tfVar {
 		}
 		ports = append(ports, o)
 	}
-	return []tfVar{
+	vars := []tfVar{
 		str("name", "Cluster name.", c.Name),
 		{Name: "node_image", Type: "string", Value: orNull(image),
 			Desc: "Node image, which sets the Kubernetes version. null = the provider's default.",
@@ -206,6 +206,14 @@ func kindVars(c *Config) []tfVar {
 		flag_("disable_default_cni", "Skip kindnet so another CNI (Cilium, Calico, ...) can be installed.", k.DisableDefaultCNI),
 		str("kubeconfig_path", "File to write the kubeconfig to. null = merge into ~/.kube/config.", orNull(c.Kubeconfig.Path)),
 	}
+	if k.Runtime == "podman" {
+		wait := k.WaitTimeout
+		if wait == "" {
+			wait = "120s"
+		}
+		vars = append(vars, str("wait_timeout", "How long kind waits for the control plane to be ready, e.g. 120s or 5m.", wait))
+	}
+	return vars
 }
 
 func aksVars(c *Config) []tfVar {
@@ -518,6 +526,58 @@ func dksVars(c *Config) []tfVar {
 	}
 }
 
+func gksVars(c *Config) []tfVar {
+	g := c.GKS
+	pools := hclObj{}
+	for _, p := range c.NodePools {
+		o := hclObj{{"machine_type", p.Size}, sizing(p)}
+		if p.DiskSizeGB != 0 {
+			o = append(o, hclKV{"disk_size_gb", p.DiskSizeGB})
+		}
+		if len(p.Zones) > 0 {
+			o = append(o, hclKV{"zones", p.Zones})
+		}
+		if len(p.Labels) > 0 {
+			o = append(o, hclKV{"labels", p.Labels})
+		}
+		if len(p.Taints) > 0 {
+			o = append(o, hclKV{"taints", taintObjects(p.Taints)})
+		}
+		if p.Spot {
+			o = append(o, hclKV{"spot", true})
+		}
+		pools = append(pools, hclKV{p.Name, o})
+	}
+	return []tfVar{
+		str("name", "Cluster name.", c.Name),
+		str("project", "Google Cloud project ID.", g.Project),
+		{Name: "location", Type: "string", Value: c.Region,
+			Desc: "A region (us-central1) for a regional cluster, or a zone (us-central1-a) for a zonal one.",
+			Hint: "Regional clusters put nodes in several zones, so node_count is per zone."},
+		str("kubernetes_version", "Minimum Kubernetes version, e.g. \"1.33\". null = the release channel's default.", orNull(c.KubernetesVersion)),
+		str("release_channel", "Automatic upgrade channel: rapid, regular, stable or none. null = GKE default.", orNull(g.ReleaseChannel)),
+		{Name: "labels", Type: "map(string)", Desc: "Labels applied to the cluster (lowercase letters, digits, '-' and '_').", Value: c.Tags},
+		str("network", "VPC network name. null = the project's default network.", orNull(g.Network)),
+		str("subnetwork", "Subnetwork name. null = chosen by GKE.", orNull(g.Subnetwork)),
+		str("pod_cidr", "Pod IP range. null = chosen by GKE.", orNull(g.PodCIDR)),
+		str("service_cidr", "Service IP range. null = chosen by GKE.", orNull(g.ServiceCIDR)),
+		flag_("private_nodes", "Give nodes private IP addresses only (they then need Cloud NAT to reach the internet).", g.PrivateNodes),
+		str("master_cidr", "A /28 range for the control plane of a private cluster. null = chosen by GKE.", orNull(g.MasterCIDR)),
+		flag_("workload_identity", "Enable Workload Identity so pods can use Google service accounts.", g.WorkloadIdentity),
+		flag_("dataplane_v2", "Use Dataplane V2 (Cilium-based networking with built-in network policy).", g.DataplaneV2),
+		{Name: "deletion_protection", Type: "bool", Value: g.DeletionProtection,
+			Desc: "Block terraform destroy from deleting the cluster.",
+			Hint: "Set to true for clusters you must not lose; set back to false and apply before destroying."},
+		{Name: "node_pools", Value: pools,
+			Type: "map(object({\n  machine_type = string\n  node_count   = optional(number, 1)\n  autoscaling  = " + tfAutoscaling +
+				"\n  disk_size_gb = optional(number)\n  zones        = optional(list(string))\n  labels       = optional(map(string), {})\n" +
+				"  taints       = " + tfTaintObjects + "\n  spot         = optional(bool, false)\n}))",
+			Desc: "Node pools, keyed by pool name. Counts are per zone in a regional cluster.",
+			Hint: hintAutoscale + "\nTo add a pool, add an entry:\n  highmem = {\n    machine_type = \"e2-highmem-4\"\n    node_count   = 1\n    labels       = { workload = \"memory\" }\n  }"},
+		str("kubeconfig_path", "Kubeconfig file used in the get_credentials_command output. null = default.", orNull(c.Kubeconfig.Path)),
+	}
+}
+
 func tfVars(c *Config) []tfVar {
 	switch c.Provider {
 	case "kind":
@@ -530,6 +590,8 @@ func tfVars(c *Config) []tfVar {
 		return vksVars(c)
 	case "dks":
 		return dksVars(c)
+	case "gks":
+		return gksVars(c)
 	}
 	return nil
 }
@@ -542,10 +604,7 @@ func tfVars(c *Config) []tfVar {
 func validateTerraform(c *Config) (errs, warns []string) {
 	switch c.Provider {
 	case "kind":
-		if c.Kind.Runtime == "podman" {
-			warns = append(warns, "kind.runtime podman: run `export KIND_EXPERIMENTAL_PROVIDER=podman` before terraform apply so the kind provider uses Podman")
-		}
-		if c.Kind.WaitTimeout != "" {
+		if c.Kind.WaitTimeout != "" && c.Kind.Runtime != "podman" {
 			warns = append(warns, "kind.waitTimeout is not used by the Terraform output (the provider waits with its own timeout)")
 		}
 	case "aks":
@@ -633,6 +692,16 @@ func renderTFVarsExample(vars []tfVar, c *Config, source string) string {
 	return b.String()
 }
 
+// templateDir is the embedded template set for c. kind on Podman has its
+// own: the kind Terraform provider only talks to Docker, so that variant
+// runs the kind CLI instead.
+func templateDir(c *Config) string {
+	if c.Provider == "kind" && c.Kind.Runtime == "podman" {
+		return "kind-podman"
+	}
+	return c.Provider
+}
+
 // writeTerraform writes the Terraform configuration for c into dir and
 // returns the files written.
 func writeTerraform(c *Config, source, dir string) ([]string, error) {
@@ -644,7 +713,7 @@ func writeTerraform(c *Config, source, dir string) ([]string, error) {
 		"terraform.tfvars.example": renderTFVarsExample(vars, c, source),
 	}
 	for _, name := range []string{"versions.tf", "main.tf", "outputs.tf"} {
-		data, err := templates.ReadFile("templates/" + c.Provider + "/" + name)
+		data, err := templates.ReadFile("templates/" + templateDir(c) + "/" + name)
 		if err != nil {
 			return nil, err
 		}

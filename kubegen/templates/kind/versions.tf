@@ -4,8 +4,7 @@ terraform {
 
   required_providers {
     # Community provider that drives kind (Kubernetes in Docker) directly.
-    # It embeds kind, so only a container engine (Docker, or Podman) has to
-    # be installed and running.
+    # It embeds kind, so only Docker has to be installed and running.
     kind = {
       source  = "tehcyx/kind"
       version = ">= 0.4.0"

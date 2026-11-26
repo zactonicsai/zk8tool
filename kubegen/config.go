@@ -16,6 +16,7 @@ type Config struct {
 	EKS  *EKSConfig  `yaml:"eks"`
 	VKS  *VKSConfig  `yaml:"vks"`
 	DKS  *DKSConfig  `yaml:"dks"`
+	GKS  *GKSConfig  `yaml:"gks"`
 }
 
 type Kubeconfig struct {
@@ -121,6 +122,20 @@ type VKSLogin struct {
 	Username              string `yaml:"username"`
 	InsecureSkipTLSVerify bool   `yaml:"insecureSkipTLSVerify"`
 	Context               string `yaml:"context"`
+}
+
+type GKSConfig struct {
+	Project            string `yaml:"project"`
+	ReleaseChannel     string `yaml:"releaseChannel"`
+	Network            string `yaml:"network"`
+	Subnetwork         string `yaml:"subnetwork"`
+	PodCIDR            string `yaml:"podCidr"`
+	ServiceCIDR        string `yaml:"serviceCidr"`
+	PrivateNodes       bool   `yaml:"privateNodes"`
+	MasterCIDR         string `yaml:"masterCidr"`
+	WorkloadIdentity   bool   `yaml:"workloadIdentity"`
+	DataplaneV2        bool   `yaml:"dataplaneV2"`
+	DeletionProtection bool   `yaml:"deletionProtection"`
 }
 
 type DKSConfig struct {

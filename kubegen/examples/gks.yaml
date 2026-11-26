@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=../schema/cluster.schema.yaml
+apiVersion: kubegen/v1
+provider: gks
+name: prod-gke
+kubernetesVersion: "1.33"
+region: us-central1            # a region = regional cluster (nodes in several zones)
+tags:                          # Google labels: lowercase letters, digits, - and _
+  env: prod
+  team: platform
+
+nodePools:
+  - name: general
+    count: 1                   # PER ZONE: 1 x 3 zones = 3 nodes
+    size: e2-standard-4
+    diskSizeGB: 100
+  - name: apps
+    size: e2-standard-8
+    autoscaling: {enabled: true, min: 1, max: 4}   # also per zone
+    labels: {workload: apps}
+  - name: batch
+    count: 0
+    size: e2-standard-8
+    spot: true
+    zones: [us-central1-a, us-central1-b]
+    autoscaling: {enabled: true, min: 0, max: 10}
+    taints:
+      - {key: workload, value: batch, effect: NoSchedule}
+
+gks:
+  project: my-gcp-project
+  releaseChannel: regular
+  workloadIdentity: true
+  dataplaneV2: true

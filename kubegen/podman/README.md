@@ -24,8 +24,10 @@ What changes:
   prints the install link: <https://podman.io/docs/installation>
 - The generated script exports `KIND_EXPERIMENTAL_PROVIDER=podman`, which is
   how kind is told to use Podman, and checks `podman info` before starting.
-- For Terraform output, export that variable yourself before
-  `terraform apply`; kubegen prints a reminder.
+- For Terraform output, kubegen writes a Podman-specific configuration that
+  runs the `kind` command with Podman selected. The community kind provider
+  for Terraform only talks to Docker, so it is not used here. `kind` must be
+  installed; you do not set the variable yourself.
 
 Step by step:
 

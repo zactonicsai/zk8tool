@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=../schema/cluster.schema.yaml
+#
+# A kind cluster whose nodes run in Podman instead of Docker.
+apiVersion: kubegen/v1
+provider: kind
+name: dev-podman
+kubernetesVersion: "1.33.1"
+
+kind:
+  runtime: podman             # docker (default) or podman
+  controlPlaneNodes: 1
+  workerNodes: 2
+  extraPortMappings:
+    # Rootless Podman cannot bind host ports below 1024, so use high ports
+    # here rather than ingressReady (which needs 80 and 443).
+    - containerPort: 30080
+      hostPort: 8080
+    - containerPort: 30443
+      hostPort: 8443

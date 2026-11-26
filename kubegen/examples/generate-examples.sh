@@ -27,7 +27,7 @@ run() {
   echo >> "$OUT/console.txt"
 }
 
-for provider in kind aks eks vks dks; do
+for provider in kind aks eks vks dks gks; do
   name="$(sed -n 's/^name: *//p' "examples/$provider.yaml")"
   echo "==> $provider ($name)"
   run "$KUBEGEN" -f "examples/$provider.yaml" -o "$OUT/shell/create-$name.sh" -skip-tool-check

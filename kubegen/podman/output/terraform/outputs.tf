@@ -2,16 +2,20 @@
 #
 output "cluster_name" {
   description = "Name of the kind cluster."
-  value       = kind_cluster.this.name
+  value       = terraform_data.cluster.output.name
 }
 
-output "endpoint" {
-  description = "Kubernetes API server URL."
-  value       = kind_cluster.this.endpoint
+output "kubectl_context" {
+  description = "kubectl context kind created for the cluster."
+  value       = "kind-${terraform_data.cluster.output.name}"
 }
 
-output "kubeconfig" {
-  description = "Kubeconfig for the cluster (terraform output -raw kubeconfig)."
-  value       = kind_cluster.this.kubeconfig
-  sensitive   = true
+output "kind_config" {
+  description = "The kind configuration the cluster was created with."
+  value       = local.kind_config_yaml
+}
+
+output "get_kubeconfig_command" {
+  description = "Command that prints the cluster's kubeconfig."
+  value       = "KIND_EXPERIMENTAL_PROVIDER=podman kind get kubeconfig --name ${terraform_data.cluster.output.name}"
 }
