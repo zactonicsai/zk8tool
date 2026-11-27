@@ -1,0 +1,45 @@
+{{- include "platform.validate" . -}}
+{{ .Chart.Name }} {{ .Chart.Version }} installed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Certificates : {{ .Values.certificates.source }}
+{{- if .Values.keycloak.enabled }}
+Keycloak     : {{ include "platform.keycloak.publicUrl" . }}  (realm "{{ .Values.keycloak.realm.name }}")
+               in-cluster: {{ include "platform.keycloak.internalUrl" . }}
+{{- end }}
+{{- if .Values.app.enabled }}
+Spring app   : {{ include "platform.app.publicUrl" . }}
+               in-cluster: {{ include "platform.app.internalUrl" . }}
+{{- end }}
+
+1. Verify connections and certificates with the Java 25 test pod:
+
+     helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }} --logs
+
+{{- if .Values.keycloak.enabled }}
+
+2. Bootstrap admin (temporary - create a personal admin and delete it):
+
+     kubectl -n {{ .Release.Namespace }} get secret {{ include "platform.keycloak.adminSecretName" . }} \
+       -o jsonpath='{.data.password}' | base64 -d
+
+3. Reach Keycloak from your workstation (the certificate has a "localhost" SAN):
+
+     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "platform.keycloak.fullname" . }} 8443:{{ .Values.keycloak.service.port }}
+{{- end }}
+{{- if and .Values.keycloak.enabled (eq .Values.keycloak.database.vendor "dev-file") }}
+
+WARNING: Keycloak uses the embedded dev-file (H2) database. That is for
+evaluation only: single replica, no backups. Use an external database for
+anything else (see values-production.yaml).
+{{- end }}
+{{- if and .Values.app.enabled (not .Values.app.saml.signing.enabled) }}
+
+WARNING: SAML AuthnRequests are not signed (app.saml.signing.enabled=false).
+`platform.sh deploy` enables signing automatically; with plain helm, provide
+the SP signing certificate and Secret (see docs/helm/values.md).
+{{- end }}
+{{- if eq .Values.certificates.source "image" }}
+
+WARNING: certificates.source=image means private keys are baked into the
+images. Use this for demos only.
+{{- end }}

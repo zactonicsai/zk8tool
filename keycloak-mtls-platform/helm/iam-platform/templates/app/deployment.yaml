@@ -1,0 +1,190 @@
+{{- if .Values.app.enabled }}
+{{- $labels := dict "root" . "component" "spring-app" }}
+{{- $samlSigning := eq (include "platform.app.samlSigning" .) "true" }}
+{{- $mountCertificates := include "platform.mountCertificates" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "platform.app.fullname" . }}
+  labels:
+    {{- include "platform.labels" $labels | nindent 4 }}
+  {{- with (include "platform.reloaderAnnotations" .) }}
+  annotations:
+    {{- . | trim | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.app.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "platform.selectorLabels" $labels | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "platform.labels" $labels | nindent 8 }}
+      {{- with .Values.app.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "platform.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountToken }}
+      {{- include "platform.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.app.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.app.terminationGracePeriodSeconds }}
+      {{- if and .Values.app.waitForKeycloak.enabled .Values.keycloak.enabled }}
+      initContainers:
+        # The app reads the SAML IdP metadata from Keycloak while starting.
+        # Waiting here (over mTLS, with the app's own certificate) gives a
+        # clean first install instead of a crash loop, and proves trust early.
+        - name: wait-for-keycloak
+          image: {{ include "platform.image" (dict "root" . "image" .Values.testClient.image) | quote }}
+          imagePullPolicy: {{ .Values.testClient.image.pullPolicy }}
+          args: ["--wait-only"]
+          env:
+            - name: KEYCLOAK_URL
+              value: {{ include "platform.keycloak.internalUrl" . | quote }}
+            - name: KEYCLOAK_REALM
+              value: {{ .Values.keycloak.realm.name | quote }}
+            - name: WAIT_TIMEOUT_SECONDS
+              value: {{ .Values.app.waitForKeycloak.timeoutSeconds | quote }}
+          resources:
+            {{- toYaml .Values.testClient.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.app.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            {{- if $mountCertificates }}
+            {{- include "platform.tlsVolumeMount" . | nindent 12 }}
+            {{- end }}
+            - name: tmp
+              mountPath: /tmp
+      {{- end }}
+      containers:
+        - name: spring-app
+          image: {{ include "platform.image" (dict "root" . "image" .Values.app.image) | quote }}
+          imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+          env:
+            # Back-channel (mTLS) and browser-facing Keycloak URLs.
+            - name: KEYCLOAK_INTERNAL_URL
+              value: {{ include "platform.keycloak.internalUrl" . | quote }}
+            - name: KEYCLOAK_PUBLIC_URL
+              value: {{ include "platform.keycloak.publicUrl" . | quote }}
+            - name: KEYCLOAK_REALM
+              value: {{ .Values.keycloak.realm.name | quote }}
+            - name: APP_PUBLIC_URL
+              value: {{ include "platform.app.publicUrl" . | quote }}
+            - name: OIDC_CLIENT_ID
+              value: {{ .Values.app.oidc.clientId | quote }}
+            - name: SAML_ENTITY_ID
+              value: {{ include "platform.app.samlEntityId" . | quote }}
+            {{- if $samlSigning }}
+            - name: SPRING_PROFILES_ACTIVE
+              value: saml-signing
+            {{- end }}
+            - name: PLATFORM_TLS_CLIENT_AUTH
+              value: {{ .Values.app.clientAuth | quote }}
+            - name: SERVER_FORWARD_HEADERS_STRATEGY
+              value: {{ .Values.app.forwardHeadersStrategy | quote }}
+            - name: API_AUDIENCE
+              value: {{ .Values.app.api.audience | quote }}
+            - name: API_REQUIRED_ROLE
+              value: {{ .Values.app.api.requiredRole | quote }}
+            # Subject DNs contain commas, so the list is joined with ';'.
+            - name: API_ALLOWED_CLIENT_SUBJECTS
+              value: {{ join ";" .Values.app.api.allowedClientSubjects | quote }}
+            {{- with .Values.app.javaOptions }}
+            - name: JDK_JAVA_OPTIONS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+            - name: management
+              containerPort: 9443
+              protocol: TCP
+          # Actuator health on the management port: HTTPS without client
+          # certificate, because the kubelet cannot present one.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+              scheme: HTTPS
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: management
+              scheme: HTTPS
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+              scheme: HTTPS
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              # Let endpoint removal propagate before graceful shutdown starts.
+              exec:
+                command: ["sleep", "5"]
+          resources:
+            {{- toYaml .Values.app.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.app.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            {{- if $mountCertificates }}
+            {{- include "platform.tlsVolumeMount" . | nindent 12 }}
+            {{- if $samlSigning }}
+            - name: saml
+              mountPath: /etc/platform/saml
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        {{- if $mountCertificates }}
+        {{- include "platform.tlsVolume" (dict "root" . "name" "spring-app") | nindent 8 }}
+        {{- if $samlSigning }}
+        - name: saml
+          secret:
+            secretName: {{ include "platform.samlSecretName" . }}
+            defaultMode: 0440
+        {{- end }}
+        {{- end }}
+        # Writable scratch space for Tomcat; the root filesystem is read-only.
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+      {{- with .Values.app.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.app.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.app.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.app.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

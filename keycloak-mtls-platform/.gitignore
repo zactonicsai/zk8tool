@@ -1,0 +1,20 @@
+# Certificates (including the CA private key), staged build contexts, manifests
+build/
+
+# Local configuration overrides
+config/platform.local.env
+
+# Maven / Java
+target/
+*.class
+.mvn/wrapper/maven-wrapper.jar
+
+# helm-unittest snapshots and packaged charts
+__snapshot__/
+*.tgz
+
+# Editors and OS
+.idea/
+.vscode/
+*.iml
+.DS_Store

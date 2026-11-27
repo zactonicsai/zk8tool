@@ -1,0 +1,9 @@
+# hadolint configuration for docker/*/Dockerfile
+failure-threshold: warning
+ignored:
+  # Base images are parameterised (ARG) and pinned in config/platform.env.
+  - DL3006
+trustedRegistries:
+  - quay.io
+  - docker.io
+  - mcr.microsoft.com

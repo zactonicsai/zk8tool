@@ -1,0 +1,254 @@
+{{- if .Values.keycloak.enabled }}
+{{- include "platform.validate" . }}
+{{- $labels := dict "root" . "component" "keycloak" }}
+{{- $db := .Values.keycloak.database }}
+{{- $devFile := eq $db.vendor "dev-file" }}
+{{- $publicUrl := include "platform.keycloak.publicUrl" . }}
+{{- $samlSigning := include "platform.app.samlSigning" . }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "platform.keycloak.fullname" . }}
+  labels:
+    {{- include "platform.labels" $labels | nindent 4 }}
+  {{- with (include "platform.reloaderAnnotations" .) }}
+  annotations:
+    {{- . | trim | nindent 4 }}
+  {{- end }}
+spec:
+  serviceName: {{ include "platform.keycloak.fullname" . }}-headless
+  replicas: {{ .Values.keycloak.replicas }}
+  # Start all pods together; they find each other through the database (jdbc-ping).
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      {{- include "platform.selectorLabels" $labels | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "platform.labels" $labels | nindent 8 }}
+      {{- with .Values.keycloak.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "platform.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountToken }}
+      {{- include "platform.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.keycloak.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.keycloak.terminationGracePeriodSeconds }}
+      containers:
+        - name: keycloak
+          image: {{ include "platform.image" (dict "root" . "image" .Values.keycloak.image) | quote }}
+          imagePullPolicy: {{ .Values.keycloak.image.pullPolicy }}
+          args:
+            - start
+            {{- if .Values.keycloak.optimized }}
+            - --optimized
+            {{- end }}
+            {{- if .Values.keycloak.realm.import }}
+            - --import-realm
+            {{- end }}
+          env:
+            # --- hostname: the public URL is the issuer in every token -----
+            - name: KC_HOSTNAME
+              value: {{ $publicUrl | quote }}
+            {{- if ne $publicUrl (include "platform.keycloak.internalUrl" .) }}
+            # In-cluster clients call the Service URL; let Keycloak answer
+            # back-channel requests on the host they arrived on.
+            - name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC
+              value: "true"
+            {{- end }}
+            # --- TLS / mTLS -------------------------------------------------
+            # https-client-auth is a build option of the image (default: request).
+            - name: KC_HTTP_ENABLED
+              value: "false"
+            - name: KC_HTTPS_PORT
+              value: "8443"
+            - name: KC_HTTPS_CERTIFICATE_FILE
+              value: /etc/platform/tls/tls.crt
+            - name: KC_HTTPS_CERTIFICATE_KEY_FILE
+              value: /etc/platform/tls/tls.key
+            {{- if include "platform.mountCertificates" . }}
+            # CA(s) trusted for client certificates and for outgoing TLS.
+            - name: KC_TRUSTSTORE_PATHS
+              value: /etc/platform/tls/ca.crt
+            {{- end }}
+            - name: KC_HTTP_MANAGEMENT_PORT
+              value: "9000"
+            {{- with .Values.keycloak.proxyHeaders }}
+            - name: KC_PROXY_HEADERS
+              value: {{ . | quote }}
+            {{- end }}
+            - name: KC_LOG_LEVEL
+              value: {{ .Values.keycloak.logLevel | quote }}
+            # --- bootstrap admin (temporary; replace it after first login) ---
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "platform.keycloak.adminSecretName" . }}
+                  key: username
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "platform.keycloak.adminSecretName" . }}
+                  key: password
+            # --- database ---------------------------------------------------
+            {{- if not .Values.keycloak.optimized }}
+            - name: KC_DB
+              value: {{ $db.vendor | quote }}
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+            - name: KC_METRICS_ENABLED
+              value: "true"
+            - name: KC_HTTPS_CLIENT_AUTH
+              value: request
+            - name: KC_HTTPS_MANAGEMENT_CLIENT_AUTH
+              value: none
+            {{- end }}
+            {{- if not $devFile }}
+            {{- if $db.url }}
+            - name: KC_DB_URL
+              value: {{ $db.url | quote }}
+            {{- else }}
+            - name: KC_DB_URL_HOST
+              value: {{ $db.host | quote }}
+            {{- with $db.port }}
+            - name: KC_DB_URL_PORT
+              value: {{ . | quote }}
+            {{- end }}
+            - name: KC_DB_URL_DATABASE
+              value: {{ $db.name | quote }}
+            {{- with $db.urlProperties }}
+            - name: KC_DB_URL_PROPERTIES
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            - name: KC_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $db.existingSecret }}
+                  key: username
+            - name: KC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $db.existingSecret }}
+                  key: password
+            {{- end }}
+            # --- placeholders resolved by the realm import file --------------
+            - name: KC_REALM_NAME
+              value: {{ .Values.keycloak.realm.name | quote }}
+            - name: APP_BASE_URL
+              value: {{ include "platform.app.publicUrl" . | quote }}
+            - name: APP_CLIENT_CERT_SUBJECT_DN
+              value: {{ include "platform.subjectDn" (dict "root" . "cn" "spring-app") | quote }}
+            - name: TEST_CLIENT_CERT_SUBJECT_DN
+              value: {{ include "platform.subjectDn" (dict "root" . "cn" "test-client") | quote }}
+            - name: CLIENT_CERT_ISSUER_DN
+              value: {{ include "platform.issuerDn" . | quote }}
+            - name: SAML_SP_ENTITY_ID
+              value: {{ include "platform.app.samlEntityId" . | quote }}
+            - name: SAML_CLIENT_SIGNATURE_REQUIRED
+              value: {{ ternary "true" "false" (eq $samlSigning "true") | quote }}
+            - name: SAML_SP_SIGNING_CERT
+              value: {{ .Values.app.saml.signing.certificate | quote }}
+            {{- with .Values.keycloak.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+            - name: management
+              containerPort: 9000
+              protocol: TCP
+            - name: jgroups
+              containerPort: 7800
+              protocol: TCP
+            - name: jgroups-fd
+              containerPort: 57800
+              protocol: TCP
+          # The kubelet does not verify the certificate of HTTPS probes and
+          # cannot present one: the management interface asks for neither.
+          startupProbe:
+            httpGet:
+              path: /health/started
+              port: management
+              scheme: HTTPS
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: management
+              scheme: HTTPS
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: management
+              scheme: HTTPS
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.keycloak.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.keycloak.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            {{- if include "platform.mountCertificates" . }}
+            {{- include "platform.tlsVolumeMount" . | nindent 12 }}
+            {{- end }}
+            {{- if $devFile }}
+            # Only the H2 directory: /opt/keycloak/data/import ships in the image.
+            - name: data
+              mountPath: /opt/keycloak/data/h2
+            {{- end }}
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        {{- if include "platform.mountCertificates" . }}
+        {{- include "platform.tlsVolume" (dict "root" . "name" "keycloak") | nindent 8 }}
+        {{- end }}
+        - name: tmp
+          emptyDir: {}
+        {{- if and $devFile (not .Values.keycloak.persistence.enabled) }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+      {{- with .Values.keycloak.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.keycloak.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.keycloak.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.keycloak.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if and $devFile .Values.keycloak.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.keycloak.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.keycloak.persistence.size }}
+  {{- end }}
+{{- end }}

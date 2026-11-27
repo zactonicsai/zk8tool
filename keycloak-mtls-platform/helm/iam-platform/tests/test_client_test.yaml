@@ -1,0 +1,129 @@
+# helm unittest suite: the `helm test` pod (Java 25 test client).
+suite: test client pod
+release:
+  name: iam
+  namespace: iam
+templates:
+  - tests/test-client-pod.yaml
+tests:
+  - it: is a helm test hook that is kept until the next run
+    asserts:
+      - isKind:
+          of: Pod
+      - equal:
+          path: metadata.name
+          value: iam-test-client
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: test
+      - equal:
+          path: metadata.annotations["helm.sh/hook-delete-policy"]
+          value: before-hook-creation
+      - equal:
+          path: spec.restartPolicy
+          value: Never
+      - equal:
+          path: spec.containers[0].image
+          value: iam-platform/test-client:0.1.0
+
+  - it: points the client at the in-cluster services
+    asserts:
+      - contains:
+          path: spec.containers[0].env
+          content: {name: KEYCLOAK_URL, value: "https://iam-keycloak.iam.svc.cluster.local:8443"}
+      - contains:
+          path: spec.containers[0].env
+          content: {name: KEYCLOAK_MGMT_URL, value: "https://iam-keycloak.iam.svc.cluster.local:9000"}
+      - contains:
+          path: spec.containers[0].env
+          content: {name: KEYCLOAK_ISSUER, value: "https://iam-keycloak.iam.svc.cluster.local:8443/realms/platform"}
+      - contains:
+          path: spec.containers[0].env
+          content: {name: APP_URL, value: "https://iam-spring-app.iam.svc.cluster.local:8443"}
+      - contains:
+          path: spec.containers[0].env
+          content: {name: APP_MGMT_URL, value: "https://iam-spring-app.iam.svc.cluster.local:9443"}
+
+  - it: expects the public issuer while still connecting in-cluster
+    set:
+      keycloak.publicUrl: https://sso.example.com
+      keycloak.realm.name: corp
+    asserts:
+      - contains:
+          path: spec.containers[0].env
+          content: {name: KEYCLOAK_URL, value: "https://iam-keycloak.iam.svc.cluster.local:8443"}
+      - contains:
+          path: spec.containers[0].env
+          content: {name: KEYCLOAK_ISSUER, value: "https://sso.example.com/realms/corp"}
+      - contains:
+          path: spec.containers[0].env
+          content: {name: KEYCLOAK_REALM, value: corp}
+
+  - it: passes the expectations and thresholds from the values
+    set:
+      testClient.minCertValidDays: 30
+      testClient.expectedTlsProtocols: TLSv1.3,TLSv1.2
+      testClient.checks: certs,keycloak
+      app.api.audience: orders-api
+      app.api.requiredRole: orders-read
+    asserts:
+      - contains:
+          path: spec.containers[0].env
+          content: {name: MIN_CERT_VALID_DAYS, value: "30"}
+      - contains:
+          path: spec.containers[0].env
+          content: {name: EXPECTED_TLS_PROTOCOLS, value: "TLSv1.3,TLSv1.2"}
+      - contains:
+          path: spec.containers[0].env
+          content: {name: CHECKS, value: "certs,keycloak"}
+      - contains:
+          path: spec.containers[0].env
+          content: {name: EXPECTED_AUDIENCE, value: orders-api}
+      - contains:
+          path: spec.containers[0].env
+          content: {name: EXPECTED_ROLE, value: orders-read}
+
+  - it: mounts its own client certificate
+    asserts:
+      - contains:
+          path: spec.volumes
+          content:
+            name: tls
+            secret:
+              secretName: iam-test-client-tls
+              defaultMode: 288
+      - contains:
+          path: spec.containers[0].volumeMounts
+          content: {name: tls, mountPath: /etc/platform/tls, readOnly: true}
+
+  - it: runs unprivileged on a read-only root filesystem
+    asserts:
+      - equal:
+          path: spec.securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+      - equal:
+          path: spec.automountServiceAccountToken
+          value: false
+
+  - it: skips the app checks' URLs when the app is disabled
+    set:
+      app.enabled: false
+    asserts:
+      - notContains:
+          path: spec.containers[0].env
+          content: {name: APP_URL}
+          any: true
+
+  - it: is not rendered when the test client or Keycloak is disabled
+    set:
+      testClient.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

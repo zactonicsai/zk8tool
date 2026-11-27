@@ -1,0 +1,163 @@
+{
+  "realm": "${KC_REALM_NAME}",
+  "displayName": "Platform",
+  "enabled": true,
+  "sslRequired": "all",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "rememberMe": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "verifyEmail": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "passwordPolicy": "length(12) and notUsername and passwordHistory(5)",
+  "defaultSignatureAlgorithm": "RS256",
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "eventsEnabled": true,
+  "eventsExpiration": 604800,
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
+  "roles": {
+    "realm": [
+      {
+        "name": "api-read",
+        "description": "May call the read-only API of the Spring Boot app"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "spring-app",
+      "name": "Spring Boot app (OpenID Connect)",
+      "description": "Authorization code flow with PKCE. The client authenticates at the token endpoint with its mTLS certificate (RFC 8705 tls_client_auth); there is no client secret.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-x509",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "fullScopeAllowed": false,
+      "rootUrl": "${APP_BASE_URL}",
+      "baseUrl": "/",
+      "redirectUris": [
+        "${APP_BASE_URL}/login/oauth2/code/keycloak"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "x509.subjectdn": "${APP_CLIENT_CERT_SUBJECT_DN}",
+        "x509.casubjectdn": "${CLIENT_CERT_ISSUER_DN}",
+        "x509.allow.regex.pattern.comparison": "false",
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${APP_BASE_URL}/*",
+        "oauth2.device.authorization.grant.enabled": "false",
+        "oidc.ciba.grant.enabled": "false"
+      }
+    },
+    {
+      "clientId": "${SAML_SP_ENTITY_ID}",
+      "name": "Spring Boot app (SAML 2.0)",
+      "description": "SP-initiated SSO with POST binding. Responses and assertions are signed by the realm key; AuthnRequests are signed by the SP when a signing certificate is configured.",
+      "enabled": true,
+      "protocol": "saml",
+      "frontchannelLogout": false,
+      "fullScopeAllowed": false,
+      "baseUrl": "${APP_BASE_URL}/",
+      "redirectUris": [
+        "${APP_BASE_URL}/login/saml2/sso/keycloak"
+      ],
+      "attributes": {
+        "saml.server.signature": "true",
+        "saml.assertion.signature": "true",
+        "saml.signature.algorithm": "RSA_SHA256",
+        "saml_signature_canonicalization_method": "http://www.w3.org/2001/10/xml-exc-c14n#",
+        "saml.client.signature": "${SAML_CLIENT_SIGNATURE_REQUIRED}",
+        "saml.signing.certificate": "${SAML_SP_SIGNING_CERT}",
+        "saml.encrypt": "false",
+        "saml.force.post.binding": "true",
+        "saml.authnstatement": "true",
+        "saml_name_id_format": "username",
+        "saml_force_name_id_format": "true",
+        "saml_assertion_consumer_url_post": "${APP_BASE_URL}/login/saml2/sso/keycloak"
+      },
+      "protocolMappers": [
+        {
+          "name": "email",
+          "protocol": "saml",
+          "protocolMapper": "saml-user-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "email",
+            "friendly.name": "email",
+            "attribute.name": "email",
+            "attribute.nameformat": "Basic"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "test-client",
+      "name": "Connectivity test client",
+      "description": "Service account used by the Helm test pod. Client-credentials grant, mTLS client authentication, certificate-bound access tokens.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-x509",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "attributes": {
+        "x509.subjectdn": "${TEST_CLIENT_CERT_SUBJECT_DN}",
+        "x509.casubjectdn": "${CLIENT_CERT_ISSUER_DN}",
+        "x509.allow.regex.pattern.comparison": "false",
+        "tls.client.certificate.bound.access.tokens": "true",
+        "access.token.lifespan": "120"
+      },
+      "protocolMappers": [
+        {
+          "name": "spring-app-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "spring-app",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "scopeMappings": [
+    {
+      "client": "test-client",
+      "roles": [
+        "api-read"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-test-client",
+      "enabled": true,
+      "serviceAccountClientId": "test-client",
+      "realmRoles": [
+        "api-read"
+      ]
+    }
+  ]
+}

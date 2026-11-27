@@ -1,0 +1,28 @@
+{{- if .Values.app.enabled }}
+{{- $labels := dict "root" . "component" "spring-app" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "platform.app.fullname" . }}
+  labels:
+    {{- include "platform.labels" $labels | nindent 4 }}
+  {{- with .Values.app.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.app.service.type }}
+  selector:
+    {{- include "platform.selectorLabels" $labels | nindent 4 }}
+  ports:
+    # TLS is terminated by the app itself, so client certificates reach it.
+    - name: https
+      port: {{ .Values.app.service.port }}
+      targetPort: https
+      protocol: TCP
+    # Actuator health; access is limited by the NetworkPolicy.
+    - name: management
+      port: {{ .Values.app.service.managementPort }}
+      targetPort: management
+      protocol: TCP
+{{- end }}

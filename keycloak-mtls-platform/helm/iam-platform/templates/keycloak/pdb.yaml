@@ -1,0 +1,14 @@
+{{- if and .Values.keycloak.enabled .Values.keycloak.pdb.enabled (gt (int .Values.keycloak.replicas) 1) }}
+{{- $labels := dict "root" . "component" "keycloak" }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "platform.keycloak.fullname" . }}
+  labels:
+    {{- include "platform.labels" $labels | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.keycloak.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "platform.selectorLabels" $labels | nindent 6 }}
+{{- end }}

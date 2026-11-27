@@ -1,0 +1,57 @@
+{{- if and .Values.app.enabled .Values.networkPolicy.enabled }}
+{{- $labels := dict "root" . "component" "spring-app" }}
+# Spring app: default deny, then only the flows it needs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "platform.app.fullname" . }}
+  labels:
+    {{- include "platform.labels" $labels | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "platform.selectorLabels" $labels | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # Browsers (through an ingress controller) and API clients.
+    - ports:
+        - port: 8443
+          protocol: TCP
+      {{- if not .Values.networkPolicy.allowExternalHttps }}
+      from:
+        - podSelector:
+            matchLabels:
+              {{- include "platform.selectorLabels" (dict "root" . "component" "test-client") | nindent 14 }}
+        {{- with .Values.app.networkPolicy.extraIngress }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+    # Actuator health for the test pod.
+    - ports:
+        - port: 9443
+          protocol: TCP
+      from:
+        - podSelector:
+            matchLabels:
+              {{- include "platform.selectorLabels" (dict "root" . "component" "test-client") | nindent 14 }}
+  egress:
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    {{- if .Values.keycloak.enabled }}
+    # Back-channel to Keycloak: token, JWKS, userinfo, SAML metadata (all mTLS).
+    - ports:
+        - port: 8443
+          protocol: TCP
+      to:
+        - podSelector:
+            matchLabels:
+              {{- include "platform.selectorLabels" (dict "root" . "component" "keycloak") | nindent 14 }}
+    {{- end }}
+    {{- with .Values.app.networkPolicy.extraEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

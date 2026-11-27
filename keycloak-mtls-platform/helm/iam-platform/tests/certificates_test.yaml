@@ -1,0 +1,202 @@
+# helm unittest suite: cert-manager resources (certificates.source=certManager).
+suite: certificates
+release:
+  name: iam
+  namespace: iam
+templates:
+  - certificates/certificates.yaml
+tests:
+  - it: creates no cert-manager resources when Secrets come from platform.sh
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: creates no cert-manager resources when certificates are baked into images
+    set:
+      certificates.source: image
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: bootstraps a CA and issues one certificate per workload
+    set:
+      certificates.source: certManager
+    asserts:
+      - hasDocuments:
+          count: 6
+      # 0: self-signed Issuer
+      - isKind:
+          of: Issuer
+        documentIndex: 0
+      - equal:
+          path: spec
+          value: {selfSigned: {}}
+        documentIndex: 0
+      # 1: CA certificate
+      - equal:
+          path: metadata.name
+          value: iam-ca
+        documentIndex: 1
+      - equal:
+          path: spec.isCA
+          value: true
+        documentIndex: 1
+      - equal:
+          path: spec.commonName
+          value: iam-platform Root CA
+        documentIndex: 1
+      - equal:
+          path: spec.privateKey
+          value: {algorithm: ECDSA, size: 384, encoding: PKCS8}
+        documentIndex: 1
+      # 2: CA Issuer backed by that certificate
+      - equal:
+          path: spec.ca.secretName
+          value: iam-ca
+        documentIndex: 2
+
+  - it: issues a server certificate for Keycloak with every in-cluster name
+    set:
+      certificates.source: certManager
+    documentIndex: 3
+    asserts:
+      - isKind:
+          of: Certificate
+      - equal:
+          path: spec.secretName
+          value: iam-keycloak-tls
+      - equal:
+          path: spec.commonName
+          value: keycloak
+      - equal:
+          path: spec.subject
+          value:
+            organizations: [Example Corp]
+            organizationalUnits: [Platform]
+            countries: [US]
+      - equal:
+          path: spec.usages
+          value: [digital signature, server auth]
+      - equal:
+          path: spec.dnsNames
+          value:
+            - iam-keycloak
+            - iam-keycloak.iam
+            - iam-keycloak.iam.svc
+            - iam-keycloak.iam.svc.cluster.local
+            - localhost
+      - equal:
+          path: spec.ipAddresses
+          value: ["127.0.0.1"]
+      - equal:
+          path: spec.issuerRef
+          value: {name: iam-ca, kind: Issuer, group: cert-manager.io}
+
+  - it: asks for PKCS#8 keys that rotate on every renewal
+    set:
+      certificates.source: certManager
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: spec.privateKey
+          value: {algorithm: ECDSA, size: 256, encoding: PKCS8, rotationPolicy: Always}
+      - equal:
+          path: spec.duration
+          value: 2160h
+      - equal:
+          path: spec.renewBefore
+          value: 720h
+
+  - it: gives the app a certificate valid as server and as client
+    set:
+      certificates.source: certManager
+    documentIndex: 4
+    asserts:
+      - equal:
+          path: spec.secretName
+          value: iam-spring-app-tls
+      - equal:
+          path: spec.commonName
+          value: spring-app
+      - equal:
+          path: spec.usages
+          value: [digital signature, server auth, client auth]
+
+  - it: gives the test client a client-only certificate
+    set:
+      certificates.source: certManager
+    documentIndex: 5
+    asserts:
+      - equal:
+          path: spec.secretName
+          value: iam-test-client-tls
+      - equal:
+          path: spec.commonName
+          value: test-client
+      - equal:
+          path: spec.usages
+          value: [digital signature, client auth]
+      - equal:
+          path: spec.dnsNames
+          value: [iam-test-client]
+      - notExists:
+          path: spec.ipAddresses
+
+  - it: adds public and ingress hostnames to the server certificates
+    set:
+      certificates.source: certManager
+      keycloak.publicUrl: https://sso.example.com
+      keycloak.ingress.host: login.example.com
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: spec.dnsNames
+          value:
+            - iam-keycloak
+            - iam-keycloak.iam
+            - iam-keycloak.iam.svc
+            - iam-keycloak.iam.svc.cluster.local
+            - localhost
+            - sso.example.com
+            - login.example.com
+
+  - it: uses an existing issuer instead of bootstrapping a CA
+    set:
+      certificates.source: certManager
+      certificates.certManager.issuerRef.name: corp-issuer
+      certificates.certManager.issuerRef.kind: ClusterIssuer
+    asserts:
+      - hasDocuments:
+          count: 3
+      - equal:
+          path: spec.issuerRef
+          value: {name: corp-issuer, kind: ClusterIssuer, group: cert-manager.io}
+        documentIndex: 0
+      - equal:
+          path: spec.secretName
+          value: iam-keycloak-tls
+        documentIndex: 0
+
+  - it: adds key encipherment and larger CA keys for RSA
+    set:
+      certificates.source: certManager
+      certificates.certManager.privateKey.algorithm: RSA
+      certificates.certManager.privateKey.size: 3072
+    asserts:
+      - equal:
+          path: spec.privateKey
+          value: {algorithm: RSA, size: 4096, encoding: PKCS8}
+        documentIndex: 1
+      - equal:
+          path: spec.usages
+          value: [digital signature, key encipherment, server auth]
+        documentIndex: 3
+
+  - it: skips certificates of disabled components
+    set:
+      certificates.source: certManager
+      app.enabled: false
+      testClient.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 4

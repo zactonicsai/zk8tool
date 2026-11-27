@@ -1,0 +1,84 @@
+# =============================================================================
+# Production overlay - an EXAMPLE to copy and adapt, not a drop-in file.
+#   platform.sh deploy --values helm/iam-platform/values-production.yaml
+# Prerequisites:
+#   * cert-manager installed in the cluster
+#   * a PostgreSQL database and a Secret "keycloak-db" (keys: username, password)
+#   * the Keycloak image built for postgres (KC_DB_VENDOR=postgres)
+# Docs: docs/helm/values.md and docs/11-security-best-practices.md
+# =============================================================================
+
+certificates:
+  # cert-manager issues and rotates every mTLS certificate.
+  source: certManager
+  # Restart pods when a certificate Secret changes (needs Stakater Reloader).
+  reloader: true
+  certManager:
+    duration: 2160h    # 90 days
+    renewBefore: 720h  # renew 30 days before expiry
+
+keycloak:
+  replicas: 2
+  publicUrl: https://sso.example.com
+  # Behind a reverse proxy that sets X-Forwarded-* headers.
+  proxyHeaders: xforwarded
+  database:
+    vendor: postgres
+    host: mydb.postgres.database.azure.com
+    port: "5432"
+    name: keycloak
+    # Verify the server certificate against the JVM trust store.
+    urlProperties: "?sslmode=verify-full&sslfactory=org.postgresql.ssl.DefaultJavaSSLFactory"
+    existingSecret: keycloak-db
+  resources:
+    requests:
+      cpu: "1"
+      memory: 1500Mi
+    limits:
+      memory: 2Gi
+  ingress:
+    enabled: true
+    className: ""          # your ingress class
+    host: sso.example.com
+    tlsSecretName: sso-example-com-tls
+    annotations: {}        # re-encrypt to the HTTPS backend; see docs/helm/ingress.md
+  networkPolicy:
+    extraIngress:
+      # Allow the ingress controller's namespace to reach Keycloak.
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: ingress
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/component: keycloak
+
+app:
+  replicas: 2
+  publicUrl: https://app.example.com
+  forwardHeadersStrategy: native
+  api:
+    # Only these client certificates may call /api/**.
+    allowedClientSubjects:
+      - CN=test-client,OU=Platform,O=Example Corp,C=US
+  ingress:
+    enabled: true
+    className: ""
+    host: app.example.com
+    tlsSecretName: app-example-com-tls
+    annotations: {}        # HTTPS backend + cookie based session affinity
+  networkPolicy:
+    extraIngress:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: ingress
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/component: spring-app

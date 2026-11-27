@@ -1,0 +1,20 @@
+apiVersion: v2
+name: iam-platform
+description: >-
+  Keycloak plus a Java 25 Spring Boot application (OIDC and SAML 2.0) with
+  mutual TLS between every component, and a Java 25 test pod that verifies
+  connections and certificates (helm test).
+type: application
+# Chart version: bump on every chart change.
+version: 1.0.0
+# Default image tag for all three images when <component>.image.tag is empty.
+appVersion: "0.1.0"
+kubeVersion: ">=1.27.0-0"
+keywords:
+  - keycloak
+  - spring-boot
+  - oidc
+  - saml
+  - mtls
+maintainers:
+  - name: platform-team

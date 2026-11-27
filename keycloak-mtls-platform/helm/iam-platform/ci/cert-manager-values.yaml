@@ -1,0 +1,12 @@
+# Used by `platform.sh verify` (helm lint / template / kubeconform) to render
+# the chart in cert-manager mode with SAML request signing switched on.
+certificates:
+  source: certManager
+  reloader: true
+
+app:
+  saml:
+    signing:
+      enabled: true
+      # Any non-empty value renders; real deployments pass the base64 DER certificate.
+      certificate: TUlJQy1leGFtcGxlLW9ubHk=

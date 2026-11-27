@@ -1,0 +1,96 @@
+# helm unittest suite: shared resources, naming and the install notes.
+suite: common
+release:
+  name: iam
+  namespace: iam
+templates:
+  - serviceaccount.yaml
+  - NOTES.txt
+tests:
+  - it: creates one ServiceAccount without an API token
+    template: serviceaccount.yaml
+    asserts:
+      - isKind:
+          of: ServiceAccount
+      - equal:
+          path: metadata.name
+          value: iam
+      - equal:
+          path: automountServiceAccountToken
+          value: false
+
+  - it: annotates the ServiceAccount, e.g. for Entra Workload ID
+    template: serviceaccount.yaml
+    set:
+      serviceAccount.annotations:
+        azure.workload.identity/client-id: 00000000-0000-0000-0000-000000000000
+    asserts:
+      - equal:
+          path: metadata.annotations["azure.workload.identity/client-id"]
+          value: 00000000-0000-0000-0000-000000000000
+
+  - it: can reuse an existing ServiceAccount
+    template: serviceaccount.yaml
+    set:
+      serviceAccount.create: false
+      serviceAccount.name: shared
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: honours fullnameOverride and common labels
+    template: serviceaccount.yaml
+    set:
+      fullnameOverride: identity
+      commonLabels:
+        team: platform
+    asserts:
+      - equal:
+          path: metadata.name
+          value: identity
+      - equal:
+          path: metadata.labels.team
+          value: platform
+      - equal:
+          path: metadata.labels["app.kubernetes.io/instance"]
+          value: iam
+
+  - it: the notes explain how to run the test pod and warn about evaluation defaults
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: helm test iam --namespace iam --logs
+      - matchRegexRaw:
+          pattern: "WARNING: Keycloak uses the embedded dev-file"
+      - matchRegexRaw:
+          pattern: "WARNING: SAML AuthnRequests are not signed"
+      - notMatchRegexRaw:
+          pattern: baked into the
+
+  - it: the notes drop the warnings for a production-like configuration
+    template: NOTES.txt
+    set:
+      keycloak.database.vendor: postgres
+      keycloak.database.host: db.example.com
+      keycloak.database.existingSecret: keycloak-db
+      app.saml.signing.enabled: true
+      app.saml.signing.certificate: TUlJQw==
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "WARNING"
+
+  - it: the notes warn when private keys live in the images
+    template: NOTES.txt
+    set:
+      certificates.source: image
+    asserts:
+      - matchRegexRaw:
+          pattern: private keys are baked into the
+
+  - it: invalid database settings also stop the notes from rendering
+    template: NOTES.txt
+    set:
+      keycloak.database.vendor: postgres
+    asserts:
+      - failedTemplate:
+          errorPattern: keycloak.database.host

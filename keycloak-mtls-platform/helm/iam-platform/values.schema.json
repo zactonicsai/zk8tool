@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "iam-platform values",
+  "type": "object",
+  "properties": {
+    "fullnameOverride": { "type": "string", "maxLength": 40 },
+    "clusterDomain": { "type": "string", "minLength": 1 },
+    "certificates": {
+      "type": "object",
+      "required": ["source", "subject"],
+      "properties": {
+        "source": { "enum": ["secret", "certManager", "image"] },
+        "subject": {
+          "type": "object",
+          "required": ["organization", "organizationalUnit", "country"],
+          "properties": {
+            "organization": { "type": "string", "pattern": "^[A-Za-z0-9 ._-]+$" },
+            "organizationalUnit": { "type": "string", "pattern": "^[A-Za-z0-9 ._-]+$" },
+            "country": { "type": "string", "pattern": "^[A-Z]{2}$" }
+          }
+        },
+        "reloader": { "type": "boolean" },
+        "certManager": {
+          "type": "object",
+          "properties": {
+            "privateKey": {
+              "type": "object",
+              "properties": {
+                "algorithm": { "enum": ["ECDSA", "RSA"] },
+                "size": { "type": "integer" },
+                "rotationPolicy": { "enum": ["Always", "Never"] }
+              }
+            }
+          }
+        }
+      }
+    },
+    "keycloak": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicas": { "type": "integer", "minimum": 1 },
+        "optimized": { "type": "boolean" },
+        "publicUrl": { "type": "string", "pattern": "^(https://.+)?$" },
+        "proxyHeaders": { "enum": ["", "xforwarded", "forwarded"] },
+        "database": {
+          "type": "object",
+          "properties": {
+            "vendor": { "enum": ["dev-file", "postgres", "mariadb", "mysql", "mssql", "oracle"] }
+          }
+        }
+      }
+    },
+    "app": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicas": { "type": "integer", "minimum": 1 },
+        "publicUrl": { "type": "string", "pattern": "^(https://.+)?$" },
+        "clientAuth": { "enum": ["want", "need"] },
+        "forwardHeadersStrategy": { "enum": ["none", "native", "framework"] },
+        "api": {
+          "type": "object",
+          "properties": {
+            "allowedClientSubjects": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "testClient": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "minCertValidDays": { "type": "integer", "minimum": 1 },
+        "waitTimeoutSeconds": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "allowExternalHttps": { "type": "boolean" }
+      }
+    }
+  }
+}

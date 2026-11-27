@@ -1,0 +1,17 @@
+# Profile "saml-signing": sign SAML AuthnRequests with the SP key.
+# Activate it (SPRING_PROFILES_ACTIVE=saml-signing) whenever the Keycloak SAML
+# client has "Client signature required" switched on, which is the default of
+# this project. The key must be an RSA key in PKCS#8 PEM format.
+spring:
+  security:
+    saml2:
+      relyingparty:
+        registration:
+          keycloak:
+            signing:
+              credentials:
+                - private-key-location: ${platform.saml.signing.private-key}
+                  certificate-location: ${platform.saml.signing.certificate}
+            assertingparty:
+              singlesignon:
+                sign-request: true

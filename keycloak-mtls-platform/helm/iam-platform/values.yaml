@@ -1,0 +1,309 @@
+# =============================================================================
+# iam-platform chart values. Reference: docs/helm/values.md
+# `scripts/platform.sh deploy` sets images, URLs, subjects and the SAML signing
+# certificate from config/platform.env, so these defaults are what a plain
+# `helm install` gets.
+# =============================================================================
+
+# -- Override the base name of all resources (default: the release name).
+fullnameOverride: ""
+# -- DNS suffix of the cluster; used to build in-cluster service URLs.
+clusterDomain: cluster.local
+# -- Extra labels added to every resource.
+commonLabels: {}
+
+global:
+  # -- Registry prefix for all images, e.g. myregistry.azurecr.io
+  imageRegistry: ""
+  # -- Pull secrets (not needed on AKS with an attached ACR).
+  imagePullSecrets: []
+
+serviceAccount:
+  # -- Create one ServiceAccount shared by all workloads.
+  create: true
+  # -- Use an existing ServiceAccount instead (when create is false).
+  name: ""
+  # -- e.g. azure.workload.identity/client-id for Entra Workload ID
+  annotations: {}
+  # -- The workloads never call the Kubernetes API.
+  automountToken: false
+
+# -----------------------------------------------------------------------------
+# Certificates and mutual TLS
+# -----------------------------------------------------------------------------
+certificates:
+  # -- Where pods get tls.crt / tls.key / ca.crt from:
+  # secret      : existing Secrets <fullname>-{keycloak,spring-app,test-client}-tls
+  #               (created by `platform.sh secrets`)
+  # certManager : cert-manager issues and renews them (recommended for production)
+  # image       : baked into the images (CERT_MODE=baked; demos only)
+  source: secret
+  # Subject fields shared by every certificate. They must match the real
+  # certificates: Keycloak authenticates clients by comparing subject DNs.
+  subject:
+    organization: Example Corp
+    organizationalUnit: Platform
+    country: US
+  # -- Common name of the issuing CA (used to derive issuerDn below).
+  caCommonName: iam-platform Root CA
+  # -- RFC 2253 subject DN of the CA that issues client certificates.
+  # Empty = "CN=<caCommonName>,OU=...,O=...,C=..." built from the fields above.
+  issuerDn: ""
+  # -- Add Stakater Reloader annotations so pods restart when a certificate
+  # Secret changes (outbound mTLS contexts are built once at start-up).
+  reloader: false
+  certManager:
+    # -- Use an existing Issuer / ClusterIssuer. When name is empty the chart
+    # bootstraps its own CA: self-signed Issuer -> CA Certificate -> CA Issuer.
+    issuerRef:
+      name: ""
+      kind: Issuer
+      group: cert-manager.io
+    # -- Lifetime of the bootstrapped CA certificate (5 years).
+    caDuration: 43800h
+    # -- Lifetime and renewal window of leaf certificates (90 / 30 days).
+    duration: 2160h
+    renewBefore: 720h
+    privateKey:
+      # ECDSA (size 256/384) or RSA (size 2048/3072/4096)
+      algorithm: ECDSA
+      size: 256
+      # A fresh key for every renewal.
+      rotationPolicy: Always
+
+# -----------------------------------------------------------------------------
+# Keycloak
+# -----------------------------------------------------------------------------
+keycloak:
+  enabled: true
+  image:
+    repository: iam-platform/keycloak
+    # -- Defaults to the chart appVersion.
+    tag: ""
+    # -- sha256:... ; wins over tag (set by `platform.sh deploy` after a push).
+    digest: ""
+    pullPolicy: IfNotPresent
+  # -- More than one replica requires an external database.
+  replicas: 1
+  # -- The image was built with `kc.sh build` (docker/keycloak/Dockerfile).
+  # Set to false for a stock Keycloak image; start-up is then slower.
+  optimized: true
+  realm:
+    name: platform
+    # -- Import /opt/keycloak/data/import/*.json on first start (existing realms are never overwritten).
+    import: true
+  # -- Browser-facing base URL (ingress / load balancer). Empty = the
+  # in-cluster service URL, which is enough for service-to-service use and tests.
+  publicUrl: ""
+  admin:
+    # -- Secret with keys "username" and "password" for the bootstrap admin.
+    # Empty = <fullname>-keycloak-admin (created by `platform.sh secrets`).
+    existingSecret: ""
+    # -- Let the chart create that Secret with a random password (kept on uninstall).
+    create: false
+  database:
+    # -- dev-file (embedded H2; evaluation only) | postgres | mariadb | mysql | mssql | oracle.
+    # Must match the vendor the image was built for (KC_DB_VENDOR).
+    vendor: dev-file
+    host: ""
+    port: ""
+    name: keycloak
+    # -- JDBC URL suffix, e.g. "?sslmode=verify-full&sslfactory=org.postgresql.ssl.DefaultJavaSSLFactory"
+    urlProperties: ""
+    # -- Full JDBC URL; replaces host/port/name/urlProperties.
+    url: ""
+    # -- Secret with keys "username" and "password". Required unless vendor is dev-file.
+    existingSecret: ""
+  persistence:
+    # -- Only used with vendor dev-file: keeps the H2 files across restarts.
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+  # -- xforwarded | forwarded: set only behind a trusted reverse proxy.
+  proxyHeaders: ""
+  logLevel: info
+  # -- Extra environment variables (list of {name, value|valueFrom}).
+  extraEnv: []
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      memory: 2Gi
+  service:
+    type: ClusterIP
+    port: 8443
+    managementPort: 9000
+    annotations: {}
+  ingress:
+    enabled: false
+    className: ""
+    # Controller-specific settings for an HTTPS (re-encrypting) backend go here.
+    annotations: {}
+    host: ""
+    tlsSecretName: ""
+  pdb:
+    # -- Rendered only when replicas > 1.
+    enabled: true
+    minAvailable: 1
+  networkPolicy:
+    # -- Additional NetworkPolicy "from" peers allowed to reach port 8443 (e.g. the ingress controller).
+    extraIngress: []
+    # -- Additional egress rules (e.g. LDAP, SMTP, identity providers).
+    extraEgress: []
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 0
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    # Keycloak writes below /opt/keycloak/data (transaction logs, caches).
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: [ALL]
+  terminationGracePeriodSeconds: 60
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+
+# -----------------------------------------------------------------------------
+# Spring Boot application (Java 25)
+# -----------------------------------------------------------------------------
+app:
+  enabled: true
+  image:
+    repository: iam-platform/spring-app
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  # -- Browser sessions are kept in memory: with more than one replica enable
+  # session affinity at the ingress (or add Spring Session).
+  replicas: 1
+  # -- Browser-facing base URL. Empty = the in-cluster service URL.
+  publicUrl: ""
+  # -- TLS client authentication on port 8443: want | need.
+  # "want" + certificate enforcement on /api/** is the default; "need" refuses
+  # every connection without a client certificate (including browsers).
+  clientAuth: want
+  # -- none | native | framework: honour X-Forwarded-* headers from a trusted proxy.
+  forwardHeadersStrategy: none
+  oidc:
+    clientId: spring-app
+  saml:
+    signing:
+      # -- Sign SAML AuthnRequests. Needs the Secret <fullname>-saml-sp-tls
+      # (RSA key, created by `platform.sh secrets`) and its certificate below.
+      enabled: false
+      # -- Base64 DER (single line) of the SP signing certificate; registered
+      # in the Keycloak realm on first import.
+      certificate: ""
+      # -- Secret with tls.crt / tls.key. Empty = <fullname>-saml-sp-tls.
+      existingSecret: ""
+  api:
+    audience: spring-app
+    requiredRole: api-read
+    # -- Subject DNs (RFC 2253) of client certificates allowed to call /api/**.
+    # Empty = any certificate issued by the trusted CA.
+    allowedClientSubjects: []
+  waitForKeycloak:
+    # -- Init container (test-client image, --wait-only) that blocks start-up
+    # until Keycloak answers over mTLS; avoids crash loops on first install.
+    enabled: true
+    timeoutSeconds: 300
+  # -- Extra JVM options (JDK_JAVA_OPTIONS).
+  javaOptions: ""
+  extraEnv: []
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 768Mi
+  service:
+    type: ClusterIP
+    port: 8443
+    managementPort: 9443
+    annotations: {}
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    host: ""
+    tlsSecretName: ""
+  pdb:
+    enabled: true
+    minAvailable: 1
+  networkPolicy:
+    extraIngress: []
+    extraEgress: []
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+  terminationGracePeriodSeconds: 45
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+
+# -----------------------------------------------------------------------------
+# Test client (Java 25) - runs as the `helm test` pod
+# -----------------------------------------------------------------------------
+testClient:
+  enabled: true
+  image:
+    repository: iam-platform/test-client
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  clientId: test-client
+  # -- Check groups to run: certs, keycloak, app.
+  checks: certs,keycloak,app
+  # -- Fail when any certificate expires sooner than this.
+  minCertValidDays: 7
+  # -- Accepted negotiated TLS versions (comma separated).
+  expectedTlsProtocols: TLSv1.3
+  # -- How long to wait for Keycloak / the app before testing.
+  waitTimeoutSeconds: 180
+  extraEnv: []
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+
+# -----------------------------------------------------------------------------
+# Network policies (default deny + the flows the platform needs)
+# -----------------------------------------------------------------------------
+networkPolicy:
+  enabled: true
+  # -- Allow HTTPS (8443) to Keycloak and the app from anywhere, e.g. when an
+  # ingress controller or load balancer in an unknown namespace fronts them.
+  allowExternalHttps: false

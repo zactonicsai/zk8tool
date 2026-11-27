@@ -1,0 +1,125 @@
+# =============================================================================
+# Spring Boot app configuration. Everything deployment-specific comes from
+# environment variables (set by the Helm chart); see docs/06-spring-app.md.
+# =============================================================================
+
+platform:
+  tls:
+    # Spring resource locations of the PEM material. The same three files are
+    # used for the HTTPS server, for client-certificate validation and for
+    # every outbound (mTLS) call to Keycloak.
+    certificate: ${PLATFORM_TLS_CERTIFICATE:file:/etc/platform/tls/tls.crt}
+    private-key: ${PLATFORM_TLS_PRIVATE_KEY:file:/etc/platform/tls/tls.key}
+    ca: ${PLATFORM_TLS_CA:file:/etc/platform/tls/ca.crt}
+    # none | want | need. "want" lets browsers in without a certificate while
+    # /api/** still insists on one (see SecurityConfig). Use "need" when every
+    # caller, including the ingress, presents a client certificate.
+    client-auth: ${PLATFORM_TLS_CLIENT_AUTH:want}
+    reload-on-update: ${PLATFORM_TLS_RELOAD:true}
+  keycloak:
+    # URL this app uses for back-channel calls (token, JWKS, userinfo, SAML metadata).
+    internal-url: ${KEYCLOAK_INTERNAL_URL}
+    # URL browsers use; also the issuer inside tokens. Defaults to the internal URL.
+    public-url: ${KEYCLOAK_PUBLIC_URL:${KEYCLOAK_INTERNAL_URL}}
+    realm: ${KEYCLOAK_REALM:platform}
+  app:
+    # Browser-facing base URL of this app; used for OIDC and SAML callback URLs.
+    public-url: ${APP_PUBLIC_URL}
+  oidc:
+    client-id: ${OIDC_CLIENT_ID:spring-app}
+    scopes: openid, profile, email
+  saml:
+    entity-id: ${SAML_ENTITY_ID:${platform.app.public-url}/saml2/service-provider-metadata/keycloak}
+    idp-metadata-uri: ${SAML_IDP_METADATA_URI:${platform.keycloak.internal-url}/realms/${platform.keycloak.realm}/protocol/saml/descriptor}
+    signing:
+      certificate: ${SAML_SIGNING_CERTIFICATE:file:/etc/platform/saml/tls.crt}
+      private-key: ${SAML_SIGNING_PRIVATE_KEY:file:/etc/platform/saml/tls.key}
+  api:
+    # Audience and realm role an access token needs to call /api/**.
+    audience: ${API_AUDIENCE:spring-app}
+    required-role: ${API_REQUIRED_ROLE:api-read}
+    # Optional allow-list of client-certificate subject DNs, separated by ';'.
+    # Empty = any certificate issued by the trusted CA.
+    allowed-client-subjects: ${API_ALLOWED_CLIENT_SUBJECTS:}
+
+spring:
+  application:
+    name: spring-app
+  ssl:
+    bundle:
+      pem:
+        server:
+          # Picks up renewed certificates (cert-manager, re-applied Secret) without a restart.
+          reload-on-update: ${platform.tls.reload-on-update}
+          keystore:
+            certificate: ${platform.tls.certificate}
+            private-key: ${platform.tls.private-key}
+          truststore:
+            certificate: ${platform.tls.ca}
+          options:
+            enabled-protocols: TLSv1.3, TLSv1.2
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # jwk-set-uri + issuer-uri: keys are fetched lazily over the internal
+          # URL (no discovery call at start-up) and the issuer claim is still validated.
+          jwk-set-uri: ${platform.keycloak.internal-url}/realms/${platform.keycloak.realm}/protocol/openid-connect/certs
+          issuer-uri: ${platform.keycloak.public-url}/realms/${platform.keycloak.realm}
+          audiences: ${platform.api.audience}
+    saml2:
+      relyingparty:
+        registration:
+          keycloak:
+            entity-id: ${platform.saml.entity-id}
+            acs:
+              location: ${platform.app.public-url}/login/saml2/sso/{registrationId}
+            assertingparty:
+              metadata-uri: ${platform.saml.idp-metadata-uri}
+              singlesignon:
+                # Overridden to true by the "saml-signing" profile.
+                sign-request: false
+
+server:
+  port: 8443
+  shutdown: graceful
+  ssl:
+    bundle: server
+    client-auth: ${platform.tls.client-auth}
+  # Set to "native" only behind a trusted reverse proxy that sets X-Forwarded-* headers.
+  forward-headers-strategy: ${SERVER_FORWARD_HEADERS_STRATEGY:none}
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        secure: true
+        http-only: true
+        # The SAML response arrives as a cross-site POST from Keycloak; the
+        # session cookie (which holds the saved AuthnRequest) must travel with it.
+        same-site: none
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  server:
+    # Separate port for health checks: HTTPS without client certificate (the
+    # kubelet cannot present one). Access is restricted by the NetworkPolicy.
+    port: 9443
+    ssl:
+      enabled: true
+      bundle: server
+      client-auth: none
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+
+logging:
+  level:
+    org.springframework.security: ${LOG_LEVEL_SECURITY:INFO}

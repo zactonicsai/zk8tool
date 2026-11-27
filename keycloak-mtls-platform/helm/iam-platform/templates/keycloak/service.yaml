@@ -1,0 +1,51 @@
+{{- if .Values.keycloak.enabled }}
+{{- $labels := dict "root" . "component" "keycloak" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "platform.keycloak.fullname" . }}
+  labels:
+    {{- include "platform.labels" $labels | nindent 4 }}
+  {{- with .Values.keycloak.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.keycloak.service.type }}
+  selector:
+    {{- include "platform.selectorLabels" $labels | nindent 4 }}
+  ports:
+    # TLS is terminated by Keycloak itself, so the client certificate reaches it.
+    - name: https
+      port: {{ .Values.keycloak.service.port }}
+      targetPort: https
+      protocol: TCP
+    # Health and metrics; access is limited by the NetworkPolicy.
+    - name: management
+      port: {{ .Values.keycloak.service.managementPort }}
+      targetPort: management
+      protocol: TCP
+---
+# Headless Service required by the StatefulSet (stable pod DNS names).
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "platform.keycloak.fullname" . }}-headless
+  labels:
+    {{- include "platform.labels" $labels | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "platform.selectorLabels" $labels | nindent 4 }}
+  ports:
+    - name: https
+      port: 8443
+      targetPort: https
+      protocol: TCP
+    - name: jgroups
+      port: 7800
+      targetPort: jgroups
+      protocol: TCP
+{{- end }}

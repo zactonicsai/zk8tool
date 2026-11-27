@@ -1,0 +1,27 @@
+# Test profile: no network, no real Keycloak. All certificate material comes
+# from the committed fixtures in src/test/resources/certs.
+platform:
+  tls:
+    certificate: classpath:certs/server.crt
+    private-key: classpath:certs/server.key
+    ca: classpath:certs/ca.crt
+    reload-on-update: false
+  keycloak:
+    internal-url: https://keycloak.internal.test:8443
+    public-url: https://sso.example.test
+    realm: platform
+  app:
+    public-url: https://app.example.test
+  saml:
+    # A descriptor captured from Keycloak 26.8 instead of a live metadata URL.
+    idp-metadata-uri: classpath:saml/idp-metadata.xml
+    signing:
+      certificate: classpath:certs/saml-sp.crt
+      private-key: classpath:certs/saml-sp.key
+  api:
+    allowed-client-subjects: "CN=test-client,OU=Platform,O=Example Corp,C=US"
+
+management:
+  server:
+    # Same port as the application so MockMvc can reach the actuator endpoints.
+    port: ${server.port}

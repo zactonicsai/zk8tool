@@ -1,0 +1,459 @@
+# helm unittest suite: Keycloak workload, services, admin secret, PDB, ingress.
+# Run: helm unittest helm/iam-platform   (or: scripts/platform.sh verify --only helm)
+suite: keycloak
+release:
+  name: iam
+  namespace: iam
+templates:
+  - keycloak/statefulset.yaml
+  - keycloak/service.yaml
+  - keycloak/admin-secret.yaml
+  - keycloak/pdb.yaml
+  - keycloak/ingress.yaml
+tests:
+  - it: renders a StatefulSet named after the release with the default image
+    template: keycloak/statefulset.yaml
+    asserts:
+      - isKind:
+          of: StatefulSet
+      - equal:
+          path: metadata.name
+          value: iam-keycloak
+      - equal:
+          path: spec.serviceName
+          value: iam-keycloak-headless
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: iam-platform/keycloak:0.1.0
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: [start, --optimized, --import-realm]
+
+  - it: prefixes the registry and prefers a digest over the tag
+    template: keycloak/statefulset.yaml
+    set:
+      global.imageRegistry: myreg.azurecr.io
+      keycloak.image.tag: 1.2.3
+      keycloak.image.digest: sha256:abc123
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: myreg.azurecr.io/iam-platform/keycloak@sha256:abc123
+
+  - it: uses the tag when no digest is given
+    template: keycloak/statefulset.yaml
+    set:
+      global.imageRegistry: myreg.azurecr.io/
+      keycloak.image.tag: 1.2.3
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: myreg.azurecr.io/iam-platform/keycloak:1.2.3
+
+  - it: serves HTTPS only, from the mounted certificate, and trusts the mounted CA
+    template: keycloak/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KC_HTTP_ENABLED, value: "false"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KC_HTTPS_CERTIFICATE_FILE, value: /etc/platform/tls/tls.crt}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KC_HTTPS_CERTIFICATE_KEY_FILE, value: /etc/platform/tls/tls.key}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KC_TRUSTSTORE_PATHS, value: /etc/platform/tls/ca.crt}
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: tls
+            secret:
+              secretName: iam-keycloak-tls
+              defaultMode: 288
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content: {name: tls, mountPath: /etc/platform/tls, readOnly: true}
+
+  - it: does not mount a certificate Secret when certificates are baked into the image
+    template: keycloak/statefulset.yaml
+    set:
+      certificates.source: image
+    asserts:
+      - notContains:
+          path: spec.template.spec.volumes
+          content: {name: tls}
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KC_TRUSTSTORE_PATHS}
+          any: true
+
+  - it: uses the in-cluster service URL as hostname by default
+    template: keycloak/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KC_HOSTNAME, value: "https://iam-keycloak.iam.svc.cluster.local:8443"}
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC}
+          any: true
+
+  - it: splits front-channel and back-channel when a public URL is set
+    template: keycloak/statefulset.yaml
+    set:
+      keycloak.publicUrl: https://sso.example.com/
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KC_HOSTNAME, value: "https://sso.example.com"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC, value: "true"}
+
+  - it: passes the realm placeholders derived from the certificate subject
+    template: keycloak/statefulset.yaml
+    set:
+      certificates.subject.organization: Acme Inc
+      certificates.subject.organizationalUnit: Identity
+      certificates.subject.country: DE
+      certificates.caCommonName: acme Root CA
+      app.publicUrl: https://app.example.com
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: APP_CLIENT_CERT_SUBJECT_DN, value: "CN=spring-app,OU=Identity,O=Acme Inc,C=DE"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: TEST_CLIENT_CERT_SUBJECT_DN, value: "CN=test-client,OU=Identity,O=Acme Inc,C=DE"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: CLIENT_CERT_ISSUER_DN, value: "CN=acme Root CA,OU=Identity,O=Acme Inc,C=DE"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: APP_BASE_URL, value: "https://app.example.com"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SAML_SP_ENTITY_ID
+            value: "https://app.example.com/saml2/service-provider-metadata/keycloak"
+
+  - it: an explicit issuer DN wins over the derived one
+    template: keycloak/statefulset.yaml
+    set:
+      certificates.issuerDn: CN=Corp Issuing CA,O=Corp,C=US
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: CLIENT_CERT_ISSUER_DN, value: "CN=Corp Issuing CA,O=Corp,C=US"}
+
+  - it: requires signed SAML requests only when a signing certificate is configured
+    template: keycloak/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: SAML_CLIENT_SIGNATURE_REQUIRED, value: "false"}
+
+  - it: registers the SAML signing certificate in the realm when signing is on
+    template: keycloak/statefulset.yaml
+    set:
+      app.saml.signing.enabled: true
+      app.saml.signing.certificate: TUlJQw==
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: SAML_CLIENT_SIGNATURE_REQUIRED, value: "true"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: SAML_SP_SIGNING_CERT, value: "TUlJQw=="}
+
+  - it: refuses SAML signing without a certificate
+    template: keycloak/statefulset.yaml
+    set:
+      app.saml.signing.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: app.saml.signing.certificate is empty
+
+  - it: reads the bootstrap admin from the Secret created by platform.sh
+    template: keycloak/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KC_BOOTSTRAP_ADMIN_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: iam-keycloak-admin
+                key: password
+
+  - it: keeps the H2 files on a volume claim with the dev-file database
+    template: keycloak/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.volumeClaimTemplates[0].metadata.name
+          value: data
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.resources.requests.storage
+          value: 1Gi
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content: {name: data, mountPath: /opt/keycloak/data/h2}
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KC_DB_URL_HOST}
+          any: true
+
+  - it: falls back to an emptyDir when persistence is disabled
+    template: keycloak/statefulset.yaml
+    set:
+      keycloak.persistence.enabled: false
+    asserts:
+      - notExists:
+          path: spec.volumeClaimTemplates
+      - contains:
+          path: spec.template.spec.volumes
+          content: {name: data, emptyDir: {}}
+
+  - it: configures an external database from host, port, name and a Secret
+    template: keycloak/statefulset.yaml
+    set:
+      keycloak.replicas: 2
+      keycloak.database.vendor: postgres
+      keycloak.database.host: db.example.com
+      keycloak.database.port: "5432"
+      keycloak.database.urlProperties: "?sslmode=verify-full"
+      keycloak.database.existingSecret: keycloak-db
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+      - notExists:
+          path: spec.volumeClaimTemplates
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KC_DB_URL_HOST, value: db.example.com}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KC_DB_URL_PORT, value: "5432"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KC_DB_URL_DATABASE, value: keycloak}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KC_DB_URL_PROPERTIES, value: "?sslmode=verify-full"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KC_DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: keycloak-db
+                key: password
+
+  - it: a full JDBC URL replaces the individual database settings
+    template: keycloak/statefulset.yaml
+    set:
+      keycloak.database.vendor: mssql
+      keycloak.database.url: jdbc:sqlserver://db:1433;databaseName=kc;encrypt=true
+      keycloak.database.existingSecret: keycloak-db
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KC_DB_URL, value: "jdbc:sqlserver://db:1433;databaseName=kc;encrypt=true"}
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KC_DB_URL_HOST}
+          any: true
+
+  - it: fails when an external database has no host
+    template: keycloak/statefulset.yaml
+    set:
+      keycloak.database.vendor: postgres
+      keycloak.database.existingSecret: keycloak-db
+    asserts:
+      - failedTemplate:
+          errorPattern: keycloak.database.host
+
+  - it: fails when an external database has no credentials Secret
+    template: keycloak/statefulset.yaml
+    set:
+      keycloak.database.vendor: postgres
+      keycloak.database.host: db.example.com
+    asserts:
+      - failedTemplate:
+          errorPattern: keycloak.database.existingSecret
+
+  - it: fails when several replicas would share the embedded database
+    template: keycloak/statefulset.yaml
+    set:
+      keycloak.replicas: 2
+    asserts:
+      - failedTemplate:
+          errorPattern: needs an external database
+
+  - it: sets build options at runtime only for a stock (non-optimized) image
+    template: keycloak/statefulset.yaml
+    set:
+      keycloak.optimized: false
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: [start, --import-realm]
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KC_DB, value: dev-file}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KC_HTTPS_CLIENT_AUTH, value: request}
+
+  - it: probes the management port over HTTPS
+    template: keycloak/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+          value: {path: /health/ready, port: management, scheme: HTTPS}
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /health/live
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.httpGet.path
+          value: /health/started
+
+  - it: runs unprivileged and without an API token
+    template: keycloak/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.securityContext.seccompProfile.type
+          value: RuntimeDefault
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          value: [ALL]
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+
+  - it: adds Reloader annotations on request
+    template: keycloak/statefulset.yaml
+    set:
+      certificates.reloader: true
+    asserts:
+      - equal:
+          path: metadata.annotations["reloader.stakater.com/auto"]
+          value: "true"
+
+  - it: renders nothing when Keycloak is disabled
+    set:
+      keycloak.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: exposes https and management on the Service and adds a headless Service
+    template: keycloak/service.yaml
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: spec.ports
+          value:
+            - {name: https, port: 8443, targetPort: https, protocol: TCP}
+            - {name: management, port: 9000, targetPort: management, protocol: TCP}
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: iam-keycloak-headless
+        documentIndex: 1
+      - equal:
+          path: spec.clusterIP
+          value: None
+        documentIndex: 1
+
+  - it: does not create an admin Secret unless asked to
+    template: keycloak/admin-secret.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: creates a kept admin Secret with a random password on request
+    template: keycloak/admin-secret.yaml
+    set:
+      keycloak.admin.create: true
+    asserts:
+      - isKind:
+          of: Secret
+      - equal:
+          path: metadata.name
+          value: iam-keycloak-admin
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+      - equal:
+          path: data.username
+          value: dGVtcC1hZG1pbg==
+      - matchRegex:
+          path: data.password
+          pattern: ^[A-Za-z0-9+/=]{40,}$
+
+  - it: has no PodDisruptionBudget for a single replica
+    template: keycloak/pdb.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: adds a PodDisruptionBudget for several replicas
+    template: keycloak/pdb.yaml
+    set:
+      keycloak.replicas: 3
+      keycloak.database.vendor: postgres
+      keycloak.database.host: db
+      keycloak.database.existingSecret: keycloak-db
+    asserts:
+      - isKind:
+          of: PodDisruptionBudget
+      - equal:
+          path: spec.minAvailable
+          value: 1
+
+  - it: has no Ingress by default
+    template: keycloak/ingress.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: routes the host to the https port of the Service
+    template: keycloak/ingress.yaml
+    set:
+      keycloak.ingress.enabled: true
+      keycloak.ingress.host: sso.example.com
+      keycloak.ingress.className: nginx
+      keycloak.ingress.tlsSecretName: sso-tls
+    asserts:
+      - equal:
+          path: spec.ingressClassName
+          value: nginx
+      - equal:
+          path: spec.rules[0].host
+          value: sso.example.com
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service
+          value: {name: iam-keycloak, port: {name: https}}
+      - equal:
+          path: spec.tls[0].secretName
+          value: sso-tls
+
+  - it: an Ingress needs a host
+    template: keycloak/ingress.yaml
+    set:
+      keycloak.ingress.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: keycloak.ingress.host is required

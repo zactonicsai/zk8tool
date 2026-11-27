@@ -1,0 +1,39 @@
+{{- if and .Values.keycloak.enabled .Values.keycloak.ingress.enabled }}
+{{- if not .Values.keycloak.ingress.host }}
+{{- fail "keycloak.ingress.host is required when keycloak.ingress.enabled is true." }}
+{{- end }}
+# The backend speaks HTTPS. Tell your controller to re-encrypt (and, for
+# certificate-bound tokens, to forward the client certificate) with
+# keycloak.ingress.annotations; see docs/helm/ingress.md.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "platform.keycloak.fullname" . }}
+  labels:
+    {{- include "platform.labels" (dict "root" . "component" "keycloak") | nindent 4 }}
+  {{- with .Values.keycloak.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.keycloak.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.keycloak.ingress.tlsSecretName }}
+  tls:
+    - hosts:
+        - {{ $.Values.keycloak.ingress.host | quote }}
+      secretName: {{ . }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.keycloak.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "platform.keycloak.fullname" . }}
+                port:
+                  name: https
+{{- end }}

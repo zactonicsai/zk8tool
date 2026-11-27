@@ -1,0 +1,273 @@
+# helm unittest suite: Spring Boot app Deployment, Service, PDB and Ingress.
+suite: spring app
+release:
+  name: iam
+  namespace: iam
+templates:
+  - app/deployment.yaml
+  - app/service.yaml
+  - app/pdb.yaml
+  - app/ingress.yaml
+tests:
+  - it: renders a Deployment with the default image and URLs
+    template: app/deployment.yaml
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: metadata.name
+          value: iam-spring-app
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: iam-platform/spring-app:0.1.0
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KEYCLOAK_INTERNAL_URL, value: "https://iam-keycloak.iam.svc.cluster.local:8443"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KEYCLOAK_PUBLIC_URL, value: "https://iam-keycloak.iam.svc.cluster.local:8443"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: APP_PUBLIC_URL, value: "https://iam-spring-app.iam.svc.cluster.local:8443"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SAML_ENTITY_ID
+            value: "https://iam-spring-app.iam.svc.cluster.local:8443/saml2/service-provider-metadata/keycloak"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: PLATFORM_TLS_CLIENT_AUTH, value: want}
+
+  - it: uses public URLs for the browser-facing settings
+    template: app/deployment.yaml
+    set:
+      keycloak.publicUrl: https://sso.example.com
+      app.publicUrl: https://app.example.com/
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KEYCLOAK_PUBLIC_URL, value: "https://sso.example.com"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: KEYCLOAK_INTERNAL_URL, value: "https://iam-keycloak.iam.svc.cluster.local:8443"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: APP_PUBLIC_URL, value: "https://app.example.com"}
+
+  - it: mounts the mTLS certificate and a writable /tmp on a read-only root filesystem
+    template: app/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: tls
+            secret:
+              secretName: iam-spring-app-tls
+              defaultMode: 288
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content: {name: tls, mountPath: /etc/platform/tls, readOnly: true}
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content: {name: tmp, mountPath: /tmp}
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 10001
+
+  - it: does not sign SAML requests or mount the SAML key by default
+    template: app/deployment.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: {name: SPRING_PROFILES_ACTIVE}
+          any: true
+      - notContains:
+          path: spec.template.spec.volumes
+          content: {name: saml}
+          any: true
+
+  - it: activates the saml-signing profile and mounts the SAML key when signing is on
+    template: app/deployment.yaml
+    set:
+      app.saml.signing.enabled: true
+      app.saml.signing.certificate: TUlJQw==
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: SPRING_PROFILES_ACTIVE, value: saml-signing}
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: saml
+            secret:
+              secretName: iam-saml-sp-tls
+              defaultMode: 288
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content: {name: saml, mountPath: /etc/platform/saml, readOnly: true}
+
+  - it: mounts no Secrets when certificates are baked into the image
+    template: app/deployment.yaml
+    set:
+      certificates.source: image
+      app.saml.signing.enabled: true
+      app.saml.signing.certificate: TUlJQw==
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes
+          value:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 64Mi
+
+  - it: joins allowed client subjects with a semicolon
+    template: app/deployment.yaml
+    set:
+      app.api.allowedClientSubjects:
+        - CN=test-client,OU=Platform,O=Example Corp,C=US
+        - CN=batch,OU=Platform,O=Example Corp,C=US
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: API_ALLOWED_CLIENT_SUBJECTS
+            value: "CN=test-client,OU=Platform,O=Example Corp,C=US;CN=batch,OU=Platform,O=Example Corp,C=US"
+
+  - it: leaves the allow-list empty by default
+    template: app/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: API_ALLOWED_CLIENT_SUBJECTS, value: ""}
+
+  - it: waits for Keycloak in an init container that uses the app certificate
+    template: app/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: wait-for-keycloak
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: iam-platform/test-client:0.1.0
+      - equal:
+          path: spec.template.spec.initContainers[0].args
+          value: [--wait-only]
+      - contains:
+          path: spec.template.spec.initContainers[0].env
+          content: {name: KEYCLOAK_URL, value: "https://iam-keycloak.iam.svc.cluster.local:8443"}
+      - contains:
+          path: spec.template.spec.initContainers[0].env
+          content: {name: WAIT_TIMEOUT_SECONDS, value: "300"}
+      - contains:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          content: {name: tls, mountPath: /etc/platform/tls, readOnly: true}
+
+  - it: has no init container when waiting is switched off
+    template: app/deployment.yaml
+    set:
+      app.waitForKeycloak.enabled: false
+    asserts:
+      - notExists:
+          path: spec.template.spec.initContainers
+
+  - it: probes actuator health on the management port over HTTPS
+    template: app/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+          value: {path: /actuator/health/readiness, port: management, scheme: HTTPS}
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /actuator/health/liveness
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content: {name: management, containerPort: 9443, protocol: TCP}
+
+  - it: passes extra JVM options and environment variables
+    template: app/deployment.yaml
+    set:
+      app.javaOptions: -Xlog:gc
+      app.extraEnv:
+        - name: LOG_LEVEL_SECURITY
+          value: DEBUG
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: JDK_JAVA_OPTIONS, value: "-Xlog:gc"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: LOG_LEVEL_SECURITY, value: DEBUG}
+
+  - it: rolls out without dropping capacity
+    template: app/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.strategy.rollingUpdate
+          value: {maxUnavailable: 0, maxSurge: 1}
+
+  - it: exposes https and management on the Service
+    template: app/service.yaml
+    asserts:
+      - equal:
+          path: spec.ports
+          value:
+            - {name: https, port: 8443, targetPort: https, protocol: TCP}
+            - {name: management, port: 9443, targetPort: management, protocol: TCP}
+      - equal:
+          path: spec.selector
+          value:
+            app.kubernetes.io/name: iam-platform
+            app.kubernetes.io/instance: iam
+            app.kubernetes.io/component: spring-app
+
+  - it: adds a PodDisruptionBudget only for several replicas
+    template: app/pdb.yaml
+    set:
+      app.replicas: 2
+    asserts:
+      - isKind:
+          of: PodDisruptionBudget
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/component"]
+          value: spring-app
+
+  - it: has no PodDisruptionBudget for a single replica
+    template: app/pdb.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: routes the Ingress host to the https port
+    template: app/ingress.yaml
+    set:
+      app.ingress.enabled: true
+      app.ingress.host: app.example.com
+      app.ingress.annotations:
+        example.com/backend-protocol: HTTPS
+    asserts:
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service
+          value: {name: iam-spring-app, port: {name: https}}
+      - equal:
+          path: metadata.annotations["example.com/backend-protocol"]
+          value: HTTPS
+      - notExists:
+          path: spec.tls
+
+  - it: an Ingress needs a host
+    template: app/ingress.yaml
+    set:
+      app.ingress.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: app.ingress.host is required
+
+  - it: renders nothing when the app is disabled
+    set:
+      app.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

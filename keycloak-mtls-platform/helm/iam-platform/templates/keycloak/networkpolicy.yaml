@@ -1,0 +1,76 @@
+{{- if and .Values.keycloak.enabled .Values.networkPolicy.enabled }}
+{{- $labels := dict "root" . "component" "keycloak" }}
+{{- $db := .Values.keycloak.database }}
+# Keycloak: default deny, then only the flows it needs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "platform.keycloak.fullname" . }}
+  labels:
+    {{- include "platform.labels" $labels | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "platform.selectorLabels" $labels | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # OIDC / SAML back-channel from the app and the test pod (and extra peers).
+    - ports:
+        - port: 8443
+          protocol: TCP
+      {{- if not .Values.networkPolicy.allowExternalHttps }}
+      from:
+        - podSelector:
+            matchLabels:
+              {{- include "platform.selectorLabels" (dict "root" . "component" "spring-app") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "platform.selectorLabels" (dict "root" . "component" "test-client") | nindent 14 }}
+        {{- with .Values.keycloak.networkPolicy.extraIngress }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+    # Health / metrics for the test pod.
+    - ports:
+        - port: 9000
+          protocol: TCP
+      from:
+        - podSelector:
+            matchLabels:
+              {{- include "platform.selectorLabels" (dict "root" . "component" "test-client") | nindent 14 }}
+    # Cluster traffic between Keycloak pods (JGroups, itself mTLS-encrypted).
+    - ports:
+        - port: 7800
+          protocol: TCP
+        - port: 57800
+          protocol: TCP
+      from:
+        - podSelector:
+            matchLabels:
+              {{- include "platform.selectorLabels" $labels | nindent 14 }}
+  egress:
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - ports:
+        - port: 7800
+          protocol: TCP
+        - port: 57800
+          protocol: TCP
+      to:
+        - podSelector:
+            matchLabels:
+              {{- include "platform.selectorLabels" $labels | nindent 14 }}
+    {{- if ne $db.vendor "dev-file" }}
+    # Database (any destination: managed databases live outside the cluster).
+    - ports:
+        - port: {{ include "platform.keycloak.databasePort" . }}
+          protocol: TCP
+    {{- end }}
+    {{- with .Values.keycloak.networkPolicy.extraEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

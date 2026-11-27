@@ -1,0 +1,45 @@
+{{- if and .Values.testClient.enabled .Values.keycloak.enabled .Values.networkPolicy.enabled }}
+{{- $labels := dict "root" . "component" "test-client" }}
+# The test pod is a hook, but its NetworkPolicy is a regular resource: it has
+# to exist before `helm test` creates the pod.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "platform.testClient.fullname" . }}
+  labels:
+    {{- include "platform.labels" $labels | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "platform.selectorLabels" $labels | nindent 6 }}
+  # Nothing may connect to the test pod; it only makes outbound calls.
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - ports:
+        - port: 8443
+          protocol: TCP
+        - port: 9000
+          protocol: TCP
+      to:
+        - podSelector:
+            matchLabels:
+              {{- include "platform.selectorLabels" (dict "root" . "component" "keycloak") | nindent 14 }}
+    {{- if .Values.app.enabled }}
+    - ports:
+        - port: 8443
+          protocol: TCP
+        - port: 9443
+          protocol: TCP
+      to:
+        - podSelector:
+            matchLabels:
+              {{- include "platform.selectorLabels" (dict "root" . "component" "spring-app") | nindent 14 }}
+    {{- end }}
+{{- end }}

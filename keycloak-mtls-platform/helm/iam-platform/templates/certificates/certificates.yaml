@@ -1,0 +1,146 @@
+{{- /*
+cert-manager mode: every workload gets a Certificate whose Secret has the same
+shape as the ones `platform.sh secrets` creates (tls.crt, tls.key, ca.crt), so
+the workloads do not care where their certificate came from.
+
+Keys are PKCS#8 on purpose: it is the one format Keycloak, Spring Boot and the
+plain-JDK test client all read.
+*/ -}}
+{{- define "platform.certificate" -}}
+{{- $cm := .root.Values.certificates.certManager -}}
+{{- $subject := .root.Values.certificates.subject -}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "platform.tlsSecretName" (dict "root" .root "name" .name) }}
+  labels:
+    {{- include "platform.labels" (dict "root" .root "component" .name) | nindent 4 }}
+spec:
+  secretName: {{ include "platform.tlsSecretName" (dict "root" .root "name" .name) }}
+  commonName: {{ .name | quote }}
+  subject:
+    organizations: [{{ $subject.organization | quote }}]
+    organizationalUnits: [{{ $subject.organizationalUnit | quote }}]
+    countries: [{{ $subject.country | quote }}]
+  duration: {{ $cm.duration }}
+  renewBefore: {{ $cm.renewBefore }}
+  privateKey:
+    algorithm: {{ $cm.privateKey.algorithm }}
+    size: {{ $cm.privateKey.size }}
+    encoding: PKCS8
+    rotationPolicy: {{ $cm.privateKey.rotationPolicy }}
+  usages:
+    - digital signature
+    {{- if eq $cm.privateKey.algorithm "RSA" }}
+    - key encipherment
+    {{- end }}
+    {{- range .usages }}
+    - {{ . }}
+    {{- end }}
+  dnsNames:
+    {{- range (.dnsNames | compact | uniq) }}
+    - {{ . | quote }}
+    {{- end }}
+  {{- with .ipAddresses }}
+  ipAddresses:
+    {{- range . }}
+    - {{ . | quote }}
+    {{- end }}
+  {{- end }}
+  issuerRef:
+    {{- include "platform.certificateIssuerRef" .root | nindent 4 }}
+{{- end -}}
+
+{{- define "platform.certificateIssuerRef" -}}
+{{- $ref := .Values.certificates.certManager.issuerRef -}}
+{{- if $ref.name -}}
+name: {{ $ref.name }}
+kind: {{ $ref.kind }}
+group: {{ $ref.group }}
+{{- else -}}
+name: {{ include "platform.fullname" . }}-ca
+kind: Issuer
+group: cert-manager.io
+{{- end -}}
+{{- end -}}
+
+{{- define "platform.serviceDnsNames" -}}
+{{- $ns := .root.Release.Namespace -}}
+{{- list .service (printf "%s.%s" .service $ns) (printf "%s.%s.svc" .service $ns) (printf "%s.%s.svc.%s" .service $ns .root.Values.clusterDomain) "localhost" | toJson -}}
+{{- end -}}
+
+{{- if eq .Values.certificates.source "certManager" }}
+{{- $cm := .Values.certificates.certManager }}
+{{- $subject := .Values.certificates.subject }}
+{{- if not $cm.issuerRef.name }}
+# --- Bootstrap CA: self-signed Issuer -> CA Certificate -> CA Issuer ----------
+# Fine for a self-contained platform. To chain to a corporate PKI (Vault,
+# Azure Key Vault, ...), set certificates.certManager.issuerRef instead.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "platform.fullname" . }}-selfsigned
+  labels:
+    {{- include "platform.labels" (dict "root" . "component" "pki") | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "platform.fullname" . }}-ca
+  labels:
+    {{- include "platform.labels" (dict "root" . "component" "pki") | nindent 4 }}
+spec:
+  isCA: true
+  secretName: {{ include "platform.fullname" . }}-ca
+  commonName: {{ .Values.certificates.caCommonName | quote }}
+  subject:
+    organizations: [{{ $subject.organization | quote }}]
+    organizationalUnits: [{{ $subject.organizationalUnit | quote }}]
+    countries: [{{ $subject.country | quote }}]
+  duration: {{ $cm.caDuration }}
+  privateKey:
+    {{- if eq $cm.privateKey.algorithm "RSA" }}
+    algorithm: RSA
+    size: 4096
+    {{- else }}
+    algorithm: ECDSA
+    size: 384
+    {{- end }}
+    encoding: PKCS8
+  usages:
+    - cert sign
+    - crl sign
+  issuerRef:
+    name: {{ include "platform.fullname" . }}-selfsigned
+    kind: Issuer
+    group: cert-manager.io
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "platform.fullname" . }}-ca
+  labels:
+    {{- include "platform.labels" (dict "root" . "component" "pki") | nindent 4 }}
+spec:
+  ca:
+    secretName: {{ include "platform.fullname" . }}-ca
+{{- end }}
+{{- if .Values.keycloak.enabled }}
+{{- $dns := include "platform.serviceDnsNames" (dict "root" . "service" (include "platform.keycloak.fullname" .)) | fromJsonArray }}
+{{- $dns = concat $dns (list (include "platform.urlHost" (include "platform.keycloak.publicUrl" .)) .Values.keycloak.ingress.host) }}
+---
+{{ include "platform.certificate" (dict "root" . "name" "keycloak" "usages" (list "server auth") "dnsNames" $dns "ipAddresses" (list "127.0.0.1")) }}
+{{- end }}
+{{- if .Values.app.enabled }}
+{{- $dns := include "platform.serviceDnsNames" (dict "root" . "service" (include "platform.app.fullname" .)) | fromJsonArray }}
+{{- $dns = concat $dns (list (include "platform.urlHost" (include "platform.app.publicUrl" .)) .Values.app.ingress.host) }}
+---
+{{ include "platform.certificate" (dict "root" . "name" "spring-app" "usages" (list "server auth" "client auth") "dnsNames" $dns "ipAddresses" (list "127.0.0.1")) }}
+{{- end }}
+{{- if .Values.testClient.enabled }}
+---
+{{ include "platform.certificate" (dict "root" . "name" "test-client" "usages" (list "client auth") "dnsNames" (list (include "platform.testClient.fullname" .))) }}
+{{- end }}
+{{- end }}

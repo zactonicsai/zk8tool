@@ -1,0 +1,80 @@
+{{- if and .Values.testClient.enabled .Values.keycloak.enabled }}
+{{- $labels := dict "root" . "component" "test-client" }}
+{{- $realm := .Values.keycloak.realm.name }}
+# `helm test <release>` starts this pod. The Java 25 test client checks the
+# mounted certificate, mutual TLS to Keycloak and the app, the mTLS
+# client-credentials grant, the token and the OIDC / SAML wiring, then exits
+# 0 (all passed) or 1. Read the report with `helm test --logs`.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "platform.testClient.fullname" . }}
+  labels:
+    {{- include "platform.labels" $labels | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    # Keep the pod (and its logs) until the next test run replaces it.
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  restartPolicy: Never
+  serviceAccountName: {{ include "platform.serviceAccountName" . }}
+  automountServiceAccountToken: {{ .Values.serviceAccount.automountToken }}
+  {{- include "platform.imagePullSecrets" . | nindent 2 }}
+  securityContext:
+    {{- toYaml .Values.testClient.podSecurityContext | nindent 4 }}
+  containers:
+    - name: test-client
+      image: {{ include "platform.image" (dict "root" . "image" .Values.testClient.image) | quote }}
+      imagePullPolicy: {{ .Values.testClient.image.pullPolicy }}
+      env:
+        # URL the client connects to (in-cluster Service) ...
+        - name: KEYCLOAK_URL
+          value: {{ include "platform.keycloak.internalUrl" . | quote }}
+        - name: KEYCLOAK_REALM
+          value: {{ $realm | quote }}
+        # ... and the issuer it must find in discovery and in tokens (public URL).
+        - name: KEYCLOAK_ISSUER
+          value: {{ printf "%s/realms/%s" (include "platform.keycloak.publicUrl" .) $realm | quote }}
+        - name: KEYCLOAK_MGMT_URL
+          value: {{ include "platform.keycloak.managementUrl" . | quote }}
+        {{- if .Values.app.enabled }}
+        - name: APP_URL
+          value: {{ include "platform.app.internalUrl" . | quote }}
+        - name: APP_MGMT_URL
+          value: {{ include "platform.app.managementUrl" . | quote }}
+        {{- end }}
+        - name: OIDC_CLIENT_ID
+          value: {{ .Values.testClient.clientId | quote }}
+        - name: EXPECTED_AUDIENCE
+          value: {{ .Values.app.api.audience | quote }}
+        - name: EXPECTED_ROLE
+          value: {{ .Values.app.api.requiredRole | quote }}
+        - name: CHECKS
+          value: {{ .Values.testClient.checks | quote }}
+        - name: MIN_CERT_VALID_DAYS
+          value: {{ .Values.testClient.minCertValidDays | quote }}
+        - name: EXPECTED_TLS_PROTOCOLS
+          value: {{ .Values.testClient.expectedTlsProtocols | quote }}
+        - name: WAIT_TIMEOUT_SECONDS
+          value: {{ .Values.testClient.waitTimeoutSeconds | quote }}
+        {{- with .Values.testClient.extraEnv }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      resources:
+        {{- toYaml .Values.testClient.resources | nindent 8 }}
+      securityContext:
+        {{- toYaml .Values.testClient.containerSecurityContext | nindent 8 }}
+      volumeMounts:
+        {{- if include "platform.mountCertificates" . }}
+        {{- include "platform.tlsVolumeMount" . | nindent 8 }}
+        {{- end }}
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    {{- if include "platform.mountCertificates" . }}
+    {{- include "platform.tlsVolume" (dict "root" . "name" "test-client") | nindent 4 }}
+    {{- end }}
+    - name: tmp
+      emptyDir:
+        sizeLimit: 16Mi
+{{- end }}
